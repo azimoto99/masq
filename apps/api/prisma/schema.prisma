@@ -1,0 +1,332 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoomKind {
+  EPHEMERAL
+  RITUAL
+  NARRATIVE
+}
+
+enum MembershipRole {
+  HOST
+  MEMBER
+}
+
+enum RoomModerationActionType {
+  MUTE
+  EXILE
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELED
+}
+
+enum ServerMembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ChannelType {
+  TEXT
+}
+
+enum ChannelIdentityMode {
+  SERVER_MASK
+  CHANNEL_MASK
+}
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  passwordHash  String
+  createdAt     DateTime @default(now())
+  defaultMaskId String?  @db.Uuid
+
+  masks                  Mask[]
+  defaultMask            Mask?           @relation("UserDefaultMask", fields: [defaultMaskId], references: [id], onDelete: SetNull)
+  sentFriendRequests     FriendRequest[] @relation("FriendRequestFrom")
+  receivedFriendRequests FriendRequest[] @relation("FriendRequestTo")
+  friendshipsAsA         Friendship[]    @relation("FriendshipUserA")
+  friendshipsAsB         Friendship[]    @relation("FriendshipUserB")
+  dmThreadsAsA           DMThread[]      @relation("DMThreadUserA")
+  dmThreadsAsB           DMThread[]      @relation("DMThreadUserB")
+  dmParticipants         DMParticipant[]
+  ownedServers           Server[]        @relation("ServerOwner")
+  serverMemberships      ServerMember[]
+  serverMemberRoles      ServerMemberRole[]
+  channelMemberIdentities ChannelMemberIdentity[]
+}
+
+model Mask {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  displayName String
+  color       String
+  avatarSeed  String
+  createdAt   DateTime @default(now())
+
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultForUsers    User[]            @relation("UserDefaultMask")
+  memberships        RoomMembership[]
+  messages           Message[]
+  moderationAsActor  RoomModeration[]  @relation("RoomModerationActor")
+  moderationAsTarget RoomModeration[]  @relation("RoomModerationTarget")
+  dmMessages         DMMessage[]
+  dmParticipants     DMParticipant[]   @relation("DMParticipantActiveMask")
+  serverMemberships  ServerMember[]    @relation("ServerMemberMask")
+  serverMessages     ServerMessage[]
+  channelMemberIdentities ChannelMemberIdentity[]
+}
+
+model Room {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String
+  kind      RoomKind
+  locked    Boolean  @default(false)
+  fogLevel  Int      @default(0)
+  messageDecayMinutes Int @default(8)
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+
+  memberships RoomMembership[]
+  messages    Message[]
+  moderations RoomModeration[]
+}
+
+model RoomMembership {
+  roomId  String   @db.Uuid
+  maskId  String   @db.Uuid
+  role    MembershipRole
+  joinedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  mask Mask @relation(fields: [maskId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, maskId])
+}
+
+model Message {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String   @db.Uuid
+  maskId    String   @db.Uuid
+  body      String
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  mask Mask @relation(fields: [maskId], references: [id], onDelete: Cascade)
+}
+
+model RoomModeration {
+  id           String                  @id @default(uuid()) @db.Uuid
+  roomId       String                  @db.Uuid
+  targetMaskId String                  @db.Uuid
+  actionType   RoomModerationActionType
+  expiresAt    DateTime?
+  createdAt    DateTime                @default(now())
+  actorMaskId  String                  @db.Uuid
+
+  room         Room                    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  targetMask   Mask                    @relation("RoomModerationTarget", fields: [targetMaskId], references: [id], onDelete: Cascade)
+  actorMask    Mask                    @relation("RoomModerationActor", fields: [actorMaskId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, targetMaskId, actionType, expiresAt])
+}
+
+model FriendRequest {
+  id         String              @id @default(uuid()) @db.Uuid
+  fromUserId String              @db.Uuid
+  toUserId   String              @db.Uuid
+  status     FriendRequestStatus
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  fromUser   User @relation("FriendRequestFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser     User @relation("FriendRequestTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status, updatedAt])
+  @@index([fromUserId, status, updatedAt])
+}
+
+model Friendship {
+  id        String   @id @default(uuid()) @db.Uuid
+  userAId   String   @db.Uuid
+  userBId   String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  userA User @relation("FriendshipUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("FriendshipUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model Server {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  ownerUserId String   @db.Uuid
+  channelIdentityMode ChannelIdentityMode @default(SERVER_MASK)
+  createdAt   DateTime @default(now())
+
+  owner    User           @relation("ServerOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  invites  ServerInvite[]
+  members  ServerMember[]
+  channels Channel[]
+  roles    ServerRole[]
+
+  @@index([ownerUserId, createdAt])
+}
+
+model ServerInvite {
+  id        String   @id @default(uuid()) @db.Uuid
+  serverId  String   @db.Uuid
+  code      String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+  maxUses   Int?
+  uses      Int      @default(0)
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, createdAt])
+}
+
+model ServerMember {
+  serverId     String           @db.Uuid
+  userId       String           @db.Uuid
+  role         ServerMembershipRole
+  joinedAt     DateTime         @default(now())
+  serverMaskId String           @db.Uuid
+
+  server      Server             @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serverMask  Mask               @relation("ServerMemberMask", fields: [serverMaskId], references: [id], onDelete: Restrict)
+  memberRoles ServerMemberRole[]
+
+  @@id([serverId, userId])
+  @@index([userId, joinedAt])
+  @@index([serverId, role])
+}
+
+model ServerRole {
+  id          String   @id @default(uuid()) @db.Uuid
+  serverId    String   @db.Uuid
+  name        String
+  permissions Json
+  createdAt   DateTime @default(now())
+
+  server       Server             @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  memberRoles  ServerMemberRole[]
+
+  @@unique([serverId, name])
+  @@index([serverId, createdAt])
+}
+
+model ServerMemberRole {
+  serverId String @db.Uuid
+  userId   String @db.Uuid
+  roleId   String @db.Uuid
+
+  member ServerMember @relation(fields: [serverId, userId], references: [serverId, userId], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   ServerRole   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([serverId, userId, roleId])
+  @@index([serverId, userId])
+  @@index([roleId])
+}
+
+model Channel {
+  id        String      @id @default(uuid()) @db.Uuid
+  serverId  String      @db.Uuid
+  name      String
+  type      ChannelType @default(TEXT)
+  createdAt DateTime    @default(now())
+
+  server            Server                 @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages          ServerMessage[]
+  memberIdentities  ChannelMemberIdentity[]
+
+  @@unique([serverId, name])
+  @@index([serverId, createdAt])
+}
+
+model ChannelMemberIdentity {
+  channelId String @db.Uuid
+  userId    String @db.Uuid
+  maskId    String @db.Uuid
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mask    Mask    @relation(fields: [maskId], references: [id], onDelete: Restrict)
+
+  @@id([channelId, userId])
+  @@index([userId, channelId])
+}
+
+model ServerMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  channelId String   @db.Uuid
+  maskId    String   @db.Uuid
+  body      String
+  createdAt DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  mask    Mask    @relation(fields: [maskId], references: [id], onDelete: Restrict)
+
+  @@index([channelId, createdAt])
+}
+
+model DMThread {
+  id        String   @id @default(uuid()) @db.Uuid
+  userAId   String   @db.Uuid
+  userBId   String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  userA        User            @relation("DMThreadUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB        User            @relation("DMThreadUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  participants DMParticipant[]
+  messages     DMMessage[]
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model DMParticipant {
+  threadId     String @db.Uuid
+  userId       String @db.Uuid
+  activeMaskId String @db.Uuid
+
+  thread     DMThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeMask Mask     @relation("DMParticipantActiveMask", fields: [activeMaskId], references: [id], onDelete: Restrict)
+
+  @@id([threadId, userId])
+  @@index([userId, threadId])
+}
+
+model DMMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  threadId  String   @db.Uuid
+  maskId    String   @db.Uuid
+  body      String
+  createdAt DateTime @default(now())
+
+  thread DMThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  mask   Mask     @relation(fields: [maskId], references: [id], onDelete: Restrict)
+
+  @@index([threadId, createdAt])
+}
+
