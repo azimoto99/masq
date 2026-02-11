@@ -140,6 +140,7 @@ export function ServersPage({ me }: ServersPageProps) {
   const [devicePickerOpen, setDevicePickerOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
+  const globalActiveMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY) ?? me.masks[0]?.id ?? null;
 
   const selectedChannel = useMemo(
     () => serverDetails?.channels.find((channel) => channel.id === selectedChannelId) ?? null,
@@ -796,6 +797,7 @@ export function ServersPage({ me }: ServersPageProps) {
                 serversLoading={serversLoading}
                 serversError={serversError}
                 selectedServerId={selectedServerId}
+                activeMaskId={globalActiveMaskId}
                 onOpenServerDialog={() => {
                   setServerDialogTab('create');
                   setServerDialogOpen(true);

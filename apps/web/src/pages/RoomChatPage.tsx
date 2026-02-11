@@ -646,31 +646,14 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
           </form>
 
           <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Your Rooms</h2>
-            <p className="mt-1 text-xs text-slate-500">Mask membership scoped</p>
-            <div className="mt-3 space-y-2">
-              {roomsLoading ? <p className="text-xs text-slate-500">Loading...</p> : null}
-              {!roomsLoading && rooms.length === 0 ? (
-                <p className="text-xs text-slate-500">No active rooms for this mask.</p>
-              ) : null}
-              {rooms.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => navigate(`/rooms/${item.id}`)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left text-xs transition ${
-                    selectedRoomId === item.id
-                      ? 'border-neon-400/60 bg-neon-400/10 text-white'
-                      : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600'
-                  }`}
-                >
-                  <div className="font-medium">{item.title}</div>
-                  <div className="mt-1 text-[10px] uppercase tracking-[0.15em] text-slate-500">
-                    {item.kind} - {item.role} - {item.locked ? 'LOCKED' : 'OPEN'}
-                  </div>
-                </button>
-              ))}
-            </div>
+            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Room Navigation</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Select a room from the shared left Spaces list.
+            </p>
+            {roomsLoading ? <p className="mt-2 text-xs text-slate-500">Refreshing room list...</p> : null}
+            {!roomsLoading && rooms.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-500">No active rooms for this mask yet.</p>
+            ) : null}
           </div>
 
           {roomsError ? (

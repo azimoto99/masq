@@ -118,11 +118,14 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
               Open Spaces
             </summary>
             <div className="mt-3">
-              <SpacesSidebar />
+              <SpacesSidebar activeMaskId={activeMask?.id ?? null} />
             </div>
           </details>
           <div className="grid gap-4 lg:grid-cols-[280px,1fr]">
-            <SpacesSidebar className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)] lg:overflow-hidden" />
+            <SpacesSidebar
+              activeMaskId={activeMask?.id ?? null}
+              className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)] lg:overflow-hidden"
+            />
             <div>{children}</div>
           </div>
         </>
