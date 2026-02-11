@@ -5,7 +5,7 @@ import {
   type MeResponse,
   type OutgoingFriendRequestItem,
 } from '@masq/shared';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   ApiError,
   acceptFriendRequest,
@@ -183,40 +183,11 @@ export function FriendsPage({ me }: FriendsPageProps) {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <BrandLogo />
-            <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Social Graph</p>
-            <h1 className="mt-3 text-3xl font-semibold text-white">Friends</h1>
-            <p className="mt-2 text-sm text-slate-400">Account-level relationships, mask-level presence stays contextual.</p>
-          </div>
-
-          <div className="flex gap-2">
-            <Link
-              to="/masks"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Back To Masks
-            </Link>
-            <Link
-              to="/dm"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Open DMs
-            </Link>
-            <Link
-              to="/servers"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Servers
-            </Link>
-            <Link
-              to="/rooms"
-              className="rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-neon-300 transition hover:border-neon-400 hover:text-white"
-            >
-              Open Rooms
-            </Link>
-          </div>
+        <div>
+          <BrandLogo />
+          <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Social Graph</p>
+          <h1 className="mt-3 text-3xl font-semibold text-white">Friends</h1>
+          <p className="mt-2 text-sm text-slate-400">Account-level relationships, mask-level presence stays contextual.</p>
         </div>
       </header>
 

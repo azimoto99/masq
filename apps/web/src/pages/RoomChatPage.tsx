@@ -12,7 +12,7 @@
   type RoomMessage,
 } from '@masq/shared';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
   createRoom,
@@ -506,30 +506,13 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <BrandLogo />
-            <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Room Chat</p>
-            <h1 className="mt-3 text-3xl font-semibold text-white">Realtime Room Messaging</h1>
-            <p className="mt-2 text-sm text-slate-400">
-              Every event runs through masks. Global user identity is never shown in the room.
-            </p>
-          </div>
-
-          <div className="flex gap-2">
-            <Link
-              to="/masks"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Back To Masks
-            </Link>
-            <Link
-              to="/servers"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Servers
-            </Link>
-          </div>
+        <div>
+          <BrandLogo />
+          <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Room Chat</p>
+          <h1 className="mt-3 text-3xl font-semibold text-white">Realtime Room Messaging</h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Every event runs through masks. Global user identity is never shown in the room.
+          </p>
         </div>
       </header>
 

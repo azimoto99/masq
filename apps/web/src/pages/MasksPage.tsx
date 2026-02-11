@@ -1,19 +1,16 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { MAX_MASKS_PER_USER, type MeResponse } from '@masq/shared';
-import { useNavigate } from 'react-router-dom';
 import { ApiError, createMask, deleteMask } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
 
 interface MasksPageProps {
   me: MeResponse;
   onRefresh: () => Promise<void>;
-  onLogout: () => Promise<void>;
 }
 
 const ACTIVE_MASK_STORAGE_KEY = 'masq.activeMaskId';
 
-export function MasksPage({ me, onRefresh, onLogout }: MasksPageProps) {
-  const navigate = useNavigate();
+export function MasksPage({ me, onRefresh }: MasksPageProps) {
   const [activeMaskId, setActiveMaskId] = useState<string | null>(
     window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY),
   );
@@ -87,11 +84,6 @@ export function MasksPage({ me, onRefresh, onLogout }: MasksPageProps) {
     }
   };
 
-  const handleLogout = async () => {
-    await onLogout();
-    navigate('/login', { replace: true });
-  };
-
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <header className="flex flex-col gap-4 rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40 md:flex-row md:items-center md:justify-between">
@@ -109,50 +101,7 @@ export function MasksPage({ me, onRefresh, onLogout }: MasksPageProps) {
           <div>
             Masks: {me.masks.length}/{MAX_MASKS_PER_USER}
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/home')}
-            className="mt-3 w-full rounded-lg border border-ink-700 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-          >
-            Home
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/rooms')}
-            disabled={!activeMask}
-            data-testid="open-rooms-button"
-            className="mt-3 w-full rounded-lg border border-neon-400/40 px-3 py-1 text-xs uppercase tracking-[0.18em] text-neon-300 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Open Rooms
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/friends')}
-            className="mt-3 w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-neon-300 transition hover:border-neon-400 hover:text-white"
-          >
-            Friends
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/dm')}
-            className="mt-3 w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-neon-300 transition hover:border-neon-400 hover:text-white"
-          >
-            Direct Messages
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/servers')}
-            className="mt-3 w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-neon-300 transition hover:border-neon-400 hover:text-white"
-          >
-            Servers
-          </button>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="mt-3 w-full rounded-lg border border-ink-700 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-400 transition hover:border-slate-500 hover:text-white"
-          >
-            Logout
-          </button>
+          <p className="mt-2 text-xs text-slate-500">Use the top navigation bar to switch sections.</p>
         </div>
       </header>
 

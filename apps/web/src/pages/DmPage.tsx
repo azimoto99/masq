@@ -9,7 +9,7 @@ import {
   type MeResponse,
 } from '@masq/shared';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, getDmThread, listDmThreads, setDmMask } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
 import { RTCPanel } from '../components/RTCPanel';
@@ -293,34 +293,11 @@ export function DmPage({ me }: DmPageProps) {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <BrandLogo />
-            <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Direct Messages</p>
-            <h1 className="mt-3 text-3xl font-semibold text-white">Friend DM Threads</h1>
-            <p className="mt-2 text-sm text-slate-400">Realtime messages with mask-only identity.</p>
-          </div>
-
-          <div className="flex gap-2">
-            <Link
-              to="/friends"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Friends
-            </Link>
-            <Link
-              to="/masks"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Masks
-            </Link>
-            <Link
-              to="/servers"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Servers
-            </Link>
-          </div>
+        <div>
+          <BrandLogo />
+          <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Direct Messages</p>
+          <h1 className="mt-3 text-3xl font-semibold text-white">Friend DM Threads</h1>
+          <p className="mt-2 text-sm text-slate-400">Realtime messages with mask-only identity.</p>
         </div>
       </header>
 

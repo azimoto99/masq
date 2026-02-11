@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import type { MeResponse } from '@masq/shared';
 import { ApiError, getMe, logout } from './lib/api';
+import { AuthenticatedShell } from './components/AuthenticatedShell';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { MasksPage } from './pages/MasksPage';
@@ -58,6 +59,18 @@ export default function App() {
     void refreshSession();
   }, [refreshSession]);
 
+  const renderAuthenticated = (content: (me: MeResponse) => ReactNode) => {
+    if (session.status !== 'authenticated') {
+      return <Navigate to="/login" replace />;
+    }
+
+    return (
+      <AuthenticatedShell me={session.me} onLogout={handleLogout}>
+        {content(session.me)}
+      </AuthenticatedShell>
+    );
+  };
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(39,48,68,0.85),_rgba(9,10,14,1)_65%)] px-4 py-10 md:px-8">
@@ -103,123 +116,45 @@ export default function App() {
             />
             <Route
               path="/home"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-6xl">
-                    <HomePage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <HomePage me={me} />)}
             />
             <Route
               path="/masks"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-5xl">
-                    <MasksPage me={session.me} onRefresh={refreshSession} onLogout={handleLogout} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => (
+                <MasksPage me={me} onRefresh={refreshSession} />
+              ))}
             />
             <Route
               path="/rooms"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-6xl">
-                    <RoomChatPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <RoomChatPage me={me} />)}
             />
             <Route
               path="/rooms/:roomId"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-6xl">
-                    <RoomChatPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <RoomChatPage me={me} />)}
             />
             <Route
               path="/friends"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-6xl">
-                    <FriendsPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <FriendsPage me={me} />)}
             />
             <Route
               path="/dm"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-6xl">
-                    <DmPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <DmPage me={me} />)}
             />
             <Route
               path="/dm/:threadId"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-6xl">
-                    <DmPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <DmPage me={me} />)}
             />
             <Route
               path="/servers"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-7xl">
-                    <ServersPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <ServersPage me={me} />)}
             />
             <Route
               path="/servers/:serverId"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-7xl">
-                    <ServersPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <ServersPage me={me} />)}
             />
             <Route
               path="/servers/:serverId/:channelId"
-              element={
-                session.status === 'authenticated' ? (
-                  <div className="mx-auto max-w-7xl">
-                    <ServersPage me={session.me} />
-                  </div>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
+              element={renderAuthenticated((me) => <ServersPage me={me} />)}
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
