@@ -73,7 +73,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(39,48,68,0.85),_rgba(9,10,14,1)_65%)] px-4 py-10 md:px-8">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(39,48,68,0.85),_rgba(9,10,14,1)_65%)] px-3 py-4 sm:px-4 sm:py-6 md:px-8 md:py-10">
         {session.status === 'loading' ? (
           <div className="mx-auto mt-20 max-w-5xl">
             <FullScreenLoading />

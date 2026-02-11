@@ -134,6 +134,8 @@ export function ServersPage({ me }: ServersPageProps) {
   const [serverDialogOpen, setServerDialogOpen] = useState(false);
   const [serverDialogTab, setServerDialogTab] = useState<'create' | 'join'>('create');
   const [devicePickerOpen, setDevicePickerOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileContextOpen, setMobileContextOpen] = useState(false);
 
   const selectedChannel = useMemo(
     () => serverDetails?.channels.find((channel) => channel.id === selectedChannelId) ?? null,
@@ -284,6 +286,11 @@ export function ServersPage({ me }: ServersPageProps) {
       setContextTab('members');
     }
   }, [canManageMembers, contextTab]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+    setMobileContextOpen(false);
+  }, [selectedServerId, selectedChannelId]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -712,9 +719,54 @@ export function ServersPage({ me }: ServersPageProps) {
   return (
     <>
       <div className="mx-auto w-full max-w-[1520px]">
+        <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setMobileSidebarOpen((current) => !current);
+            }}
+            className={`rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] transition ${
+              mobileSidebarOpen
+                ? 'border-neon-400/45 bg-neon-400/10 text-neon-100'
+                : 'border-ink-700 bg-ink-900/80 text-slate-300'
+            }`}
+          >
+            {mobileSidebarOpen ? 'Hide Spaces' : 'Show Spaces'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileContextOpen((current) => !current);
+            }}
+            className={`rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] transition ${
+              mobileContextOpen
+                ? 'border-neon-400/45 bg-neon-400/10 text-neon-100'
+                : 'border-ink-700 bg-ink-900/80 text-slate-300'
+            }`}
+          >
+            {mobileContextOpen ? 'Hide Context' : 'Show Context'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setServerDialogTab('create');
+              setServerDialogOpen(true);
+            }}
+            className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300"
+          >
+            Create / Join
+          </button>
+        </div>
         <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-          <div className="xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
             <div className="flex h-full flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(false)}
+                className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
+              >
+                Close Spaces
+              </button>
               <SpacesSidebar
                 className="flex-1 overflow-hidden"
                 servers={servers}
@@ -820,7 +872,7 @@ export function ServersPage({ me }: ServersPageProps) {
             </div>
           </div>
 
-          <main className="masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <main className="order-1 xl:order-2 masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
             <div className="flex h-full flex-col gap-3">
               {!selectedServerId ? (
                 <div className="flex h-full items-center justify-center rounded-xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
@@ -925,7 +977,7 @@ export function ServersPage({ me }: ServersPageProps) {
                   <div
                     ref={messageListRef}
                     className={`flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-2.5 ${
-                      showVideoStage ? 'min-h-[220px]' : 'min-h-[420px]'
+                      showVideoStage ? 'min-h-[220px]' : 'min-h-[300px] lg:min-h-[420px]'
                     }`}
                   >
                     <div className="space-y-2">
@@ -1042,8 +1094,15 @@ export function ServersPage({ me }: ServersPageProps) {
             </div>
           </main>
 
-          <aside className="masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
             <div className="flex h-full flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setMobileContextOpen(false)}
+                className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
+              >
+                Close Context
+              </button>
               {!selectedServerId || !serverDetails ? (
                 <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3 text-sm text-slate-500">
                   Select a server to view members, roles, and call details.
@@ -1445,7 +1504,7 @@ export function ServersPage({ me }: ServersPageProps) {
       ) : null}
 
       {selectedServerId && serverDetails && canManageInvites ? (
-        <div className="fixed bottom-4 right-4 z-40 rounded-lg border border-cyan-500/35 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30">
+        <div className="fixed bottom-4 right-4 z-40 hidden rounded-lg border border-cyan-500/35 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30 sm:block">
           <button
             type="button"
             onClick={() => {
@@ -1465,7 +1524,7 @@ export function ServersPage({ me }: ServersPageProps) {
       ) : null}
 
       {selectedServerId && serverDetails ? (
-        <div className="fixed bottom-4 left-4 z-40 rounded-lg border border-ink-700 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30">
+        <div className="fixed bottom-4 left-4 z-40 hidden rounded-lg border border-ink-700 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30 sm:block">
           <label className="block text-[10px] uppercase tracking-[0.12em] text-slate-500">
             Identity Mode
           </label>

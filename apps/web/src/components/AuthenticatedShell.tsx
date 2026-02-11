@@ -12,6 +12,14 @@ interface AuthenticatedShellProps {
 }
 
 const ACTIVE_MASK_STORAGE_KEY = 'masq.activeMaskId';
+const MOBILE_NAV_ITEMS: Array<{ label: string; to: string }> = [
+  { label: 'Home', to: '/home' },
+  { label: 'Servers', to: '/servers' },
+  { label: 'Friends', to: '/friends' },
+  { label: 'DMs', to: '/dm' },
+  { label: 'Rooms', to: '/rooms' },
+  { label: 'Masks', to: '/masks' },
+];
 
 export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShellProps) {
   const location = useLocation();
@@ -38,6 +46,9 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
       location.pathname.startsWith('/rooms') ||
       location.pathname.startsWith('/masks') ||
       location.pathname.startsWith('/home'));
+
+  const isMobileNavActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
     <div className="mx-auto w-full max-w-[1520px] space-y-4">
@@ -83,11 +94,38 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
           </div>
         </div>
       </header>
-      {showGlobalSpacesSidebar ? (
-        <div className="grid gap-4 lg:grid-cols-[280px,1fr]">
-          <SpacesSidebar className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)] lg:overflow-hidden" />
-          <div>{children}</div>
+      <nav className="lg:hidden rounded-2xl border border-ink-700 bg-ink-900/70 p-2">
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {MOBILE_NAV_ITEMS.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] transition ${
+                isMobileNavActive(item.to)
+                  ? 'border-neon-400/50 bg-neon-400/10 text-neon-100'
+                  : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600 hover:text-white'
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
+      </nav>
+      {showGlobalSpacesSidebar ? (
+        <>
+          <details className="lg:hidden rounded-2xl border border-ink-700 bg-ink-900/70 p-3">
+            <summary className="cursor-pointer list-none text-xs uppercase tracking-[0.16em] text-slate-300">
+              Open Spaces
+            </summary>
+            <div className="mt-3">
+              <SpacesSidebar />
+            </div>
+          </details>
+          <div className="grid gap-4 lg:grid-cols-[280px,1fr]">
+            <SpacesSidebar className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)] lg:overflow-hidden" />
+            <div>{children}</div>
+          </div>
+        </>
       ) : (
         children
       )}

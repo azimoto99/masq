@@ -760,7 +760,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                   disabledReason={roomExpired ? 'Room expired. Calls are disabled.' : undefined}
                 />
 
-                <div ref={messageListRef} className="h-[420px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
+                <div ref={messageListRef} className="h-[52vh] min-h-[280px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/70 p-4 lg:h-[420px]">
                   <div className="space-y-3">
                     {messages.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
                     {messages.map((message) => (
