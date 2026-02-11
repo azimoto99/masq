@@ -75,6 +75,7 @@ import type { Env } from '../src/env.js';
 class InMemoryRepository implements MasqRepository {
   private usersById = new Map<string, UserRecord>();
   private userIdByEmail = new Map<string, string>();
+  private userIdByFriendCode = new Map<string, string>();
   private masksById = new Map<string, MaskRecord>();
   private maskIdsByUser = new Map<string, string[]>();
   private roomsById = new Map<string, RoomRecord>();
@@ -179,6 +180,11 @@ class InMemoryRepository implements MasqRepository {
     return id ? this.usersById.get(id) ?? null : null;
   }
 
+  async findUserByFriendCode(friendCode: string) {
+    const id = this.userIdByFriendCode.get(friendCode);
+    return id ? this.usersById.get(id) ?? null : null;
+  }
+
   async findUserById(id: string) {
     return this.usersById.get(id) ?? null;
   }
@@ -199,9 +205,16 @@ class InMemoryRepository implements MasqRepository {
   }
 
   async createUser(input: CreateUserInput) {
+    if (this.userIdByEmail.has(input.email) || this.userIdByFriendCode.has(input.friendCode)) {
+      const duplicate = new Error('Duplicate user');
+      (duplicate as Error & { code?: string }).code = 'P2002';
+      throw duplicate;
+    }
+
     const user: UserRecord = {
       id: randomUUID(),
       email: input.email,
+      friendCode: input.friendCode,
       passwordHash: input.passwordHash,
       defaultMaskId: null,
       createdAt: new Date(),
@@ -209,6 +222,7 @@ class InMemoryRepository implements MasqRepository {
 
     this.usersById.set(user.id, user);
     this.userIdByEmail.set(user.email, user.id);
+    this.userIdByFriendCode.set(user.friendCode, user.id);
     this.maskIdsByUser.set(user.id, []);
 
     return user;
@@ -976,6 +990,7 @@ class InMemoryRepository implements MasqRepository {
     return {
       id: user.id,
       email: user.email,
+      friendCode: user.friendCode,
       defaultMask: defaultMask
         ? {
             id: defaultMask.id,
@@ -1902,7 +1917,7 @@ describe('auth and mask flows', () => {
       url: '/friends/request',
       headers: { cookie: aliceCookie },
       payload: {
-        toEmail: 'bob@example.com',
+        friendCode: bobMe.user.friendCode,
       },
     });
     expect(createFriendRequestResponse.statusCode).toBe(201);

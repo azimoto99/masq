@@ -14,6 +14,7 @@ import type {
 export interface UserRecord {
   id: string;
   email: string;
+  friendCode: string;
   passwordHash: string;
   defaultMaskId: string | null;
   createdAt: Date;
@@ -85,6 +86,7 @@ export interface FriendDefaultMaskRecord {
 export interface FriendUserRecord {
   id: string;
   email: string;
+  friendCode: string;
   defaultMask: FriendDefaultMaskRecord | null;
 }
 
@@ -235,6 +237,7 @@ export interface VoiceParticipantRecord {
 
 export interface CreateUserInput {
   email: string;
+  friendCode: string;
   passwordHash: string;
 }
 
@@ -360,6 +363,7 @@ export interface CreateVoiceParticipantInput {
 export interface MasqRepository {
   pingDb(): Promise<void>;
   findUserByEmail(email: string): Promise<UserRecord | null>;
+  findUserByFriendCode(friendCode: string): Promise<UserRecord | null>;
   findUserById(id: string): Promise<UserRecord | null>;
   updateUserDefaultMask(userId: string, defaultMaskId: string | null): Promise<UserRecord>;
   createUser(input: CreateUserInput): Promise<UserRecord>;

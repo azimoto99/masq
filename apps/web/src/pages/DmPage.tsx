@@ -10,7 +10,15 @@ import {
 } from '@masq/shared';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ApiError, buildUploadUrl, getDmThread, listDmThreads, setDmMask, uploadImage } from '../lib/api';
+import {
+  ApiError,
+  buildUploadUrl,
+  getDmThread,
+  listDmThreads,
+  sendFriendRequest,
+  setDmMask,
+  uploadImage,
+} from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
 import { MaskAvatar } from '../components/MaskAvatar';
 import { RTCPanel } from '../components/RTCPanel';
@@ -66,6 +74,8 @@ export function DmPage({ me }: DmPageProps) {
   const [composerImageFile, setComposerImageFile] = useState<File | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [savingMask, setSavingMask] = useState(false);
+  const [friendRequestPendingUserId, setFriendRequestPendingUserId] = useState<string | null>(null);
+  const [friendRequestNotice, setFriendRequestNotice] = useState<string | null>(null);
 
   const activeMask = useMemo(
     () => me.masks.find((mask) => mask.id === activeMaskId) ?? null,
@@ -299,6 +309,24 @@ export function DmPage({ me }: DmPageProps) {
     }
   };
 
+  const onSendFriendRequestByUserId = async (targetUserId: string) => {
+    if (targetUserId === me.user.id) {
+      return;
+    }
+
+    setFriendRequestPendingUserId(targetUserId);
+    setFriendRequestNotice(null);
+    setSocketError(null);
+    try {
+      await sendFriendRequest({ toUserId: targetUserId });
+      setFriendRequestNotice('Friend request sent');
+    } catch (err) {
+      setSocketError(err instanceof ApiError ? err.message : 'Failed to send friend request');
+    } finally {
+      setFriendRequestPendingUserId(null);
+    }
+  };
+
   useEffect(() => {
     if (activeMaskId) {
       return;
@@ -419,6 +447,11 @@ export function DmPage({ me }: DmPageProps) {
                   {socketError ? (
                     <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
                       {socketError}
+                    </div>
+                  ) : null}
+                  {friendRequestNotice ? (
+                    <div className="mt-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
+                      {friendRequestNotice}
                     </div>
                   ) : null}
                 </div>
@@ -550,6 +583,18 @@ export function DmPage({ me }: DmPageProps) {
                         <p className="text-sm font-medium text-white">{participant.mask.displayName}</p>
                       </div>
                       <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">{participant.mask.avatarSeed}</p>
+                      {participant.userId !== me.user.id ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void onSendFriendRequestByUserId(participant.userId);
+                          }}
+                          disabled={friendRequestPendingUserId === participant.userId}
+                          className="mt-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {friendRequestPendingUserId === participant.userId ? 'Sending...' : 'Add Friend'}
+                        </button>
+                      ) : null}
                     </div>
                   ))}
                 </div>

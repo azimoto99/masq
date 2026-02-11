@@ -37,6 +37,7 @@ const orderUserPair = (userAId: string, userBId: string) => {
 const serializeFriendUser = (user: {
   id: string;
   email: string;
+  friendCode: string;
   defaultMask: {
     id: string;
     displayName: string;
@@ -47,6 +48,7 @@ const serializeFriendUser = (user: {
 }): FriendUserRecord => ({
   id: user.id,
   email: user.email,
+  friendCode: user.friendCode,
   defaultMask: user.defaultMask
     ? {
         id: user.defaultMask.id,
@@ -136,6 +138,10 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
       return prisma.user.findUnique({ where: { email } });
     },
 
+    findUserByFriendCode(friendCode: string) {
+      return prisma.user.findUnique({ where: { friendCode } });
+    },
+
     findUserById(id: string) {
       return prisma.user.findUnique({ where: { id } });
     },
@@ -151,6 +157,7 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
       return prisma.user.create({
         data: {
           email: input.email,
+          friendCode: input.friendCode,
           passwordHash: input.passwordHash,
         },
       });

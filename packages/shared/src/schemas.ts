@@ -9,7 +9,8 @@ export const DEFAULT_MESSAGE_DECAY_MINUTES = 8;
 export const FOCUS_REVEAL_DURATION_SECONDS = 30;
 export const DEFAULT_MUTE_MINUTES = 10;
 export const MAX_MUTE_MINUTES = 60;
-export const MAX_FRIEND_EMAIL_LENGTH = 255;
+export const MIN_FRIEND_CODE_LENGTH = 6;
+export const MAX_FRIEND_CODE_LENGTH = 20;
 export const MAX_SERVER_NAME_LENGTH = 80;
 export const MAX_CHANNEL_NAME_LENGTH = 60;
 export const MAX_INVITE_CODE_LENGTH = 64;
@@ -66,10 +67,17 @@ export type ServerPermission = z.infer<typeof ServerPermissionSchema>;
 export const ALL_SERVER_PERMISSIONS = ServerPermissionSchema.options;
 export const DEFAULT_SERVER_ROLE_ADMIN_NAME = 'ADMIN';
 export const DEFAULT_SERVER_ROLE_MEMBER_NAME = 'MEMBER';
+export const FRIEND_CODE_REGEX = /^[A-Z0-9]+$/;
+export const FriendCodeSchema = z
+  .string()
+  .min(MIN_FRIEND_CODE_LENGTH)
+  .max(MAX_FRIEND_CODE_LENGTH)
+  .regex(FRIEND_CODE_REGEX, 'Friend code must contain only uppercase letters and numbers');
 
 export const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
+  friendCode: FriendCodeSchema,
   createdAt: z.string().datetime(),
 });
 
@@ -144,6 +152,7 @@ export const DefaultMaskSummarySchema = z.object({
 export const FriendUserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
+  friendCode: FriendCodeSchema,
   defaultMask: DefaultMaskSummarySchema.nullable(),
 });
 
@@ -158,12 +167,12 @@ export const FriendRequestSchema = z.object({
 
 export const CreateFriendRequestRequestSchema = z
   .object({
-    toEmail: z.string().email().max(MAX_FRIEND_EMAIL_LENGTH).optional(),
+    friendCode: FriendCodeSchema.optional(),
     toUserId: z.string().uuid().optional(),
   })
-  .refine((value) => Boolean(value.toEmail) !== Boolean(value.toUserId), {
-    message: 'Provide exactly one of toEmail or toUserId',
-    path: ['toEmail'],
+  .refine((value) => Boolean(value.friendCode) !== Boolean(value.toUserId), {
+    message: 'Provide exactly one of friendCode or toUserId',
+    path: ['friendCode'],
   });
 
 export const FriendRequestParamsSchema = z.object({

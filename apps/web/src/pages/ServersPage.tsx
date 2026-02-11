@@ -28,6 +28,7 @@ import {
   listServerRoles,
   listServers,
   setChannelMask,
+  sendFriendRequest,
   setServerMemberRoles,
   setServerMask,
   uploadImage,
@@ -118,6 +119,9 @@ export function ServersPage({ me }: ServersPageProps) {
   const [channelMaskPending, setChannelMaskPending] = useState(false);
   const [maskChangePending, setMaskChangePending] = useState(false);
   const [kickPendingUserId, setKickPendingUserId] = useState<string | null>(null);
+  const [friendRequestPendingUserId, setFriendRequestPendingUserId] = useState<string | null>(null);
+  const [friendRequestNotice, setFriendRequestNotice] = useState<string | null>(null);
+  const [memberActionMenuUserId, setMemberActionMenuUserId] = useState<string | null>(null);
   const [rolesPayload, setRolesPayload] = useState<ListServerRolesResponse | null>(null);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesError, setRolesError] = useState<string | null>(null);
@@ -668,6 +672,25 @@ export function ServersPage({ me }: ServersPageProps) {
     }
   };
 
+  const onSendFriendRequestByUserId = async (targetUserId: string) => {
+    if (targetUserId === me.user.id) {
+      return;
+    }
+
+    setFriendRequestPendingUserId(targetUserId);
+    setFriendRequestNotice(null);
+    setDetailsError(null);
+    try {
+      await sendFriendRequest({ toUserId: targetUserId });
+      setFriendRequestNotice('Friend request sent');
+      setMemberActionMenuUserId(null);
+    } catch (err) {
+      setDetailsError(err instanceof ApiError ? err.message : 'Failed to send friend request');
+    } finally {
+      setFriendRequestPendingUserId(null);
+    }
+  };
+
   const onSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedChannel || (!composerBody.trim() && !composerImageFile)) {
@@ -1091,6 +1114,12 @@ export function ServersPage({ me }: ServersPageProps) {
                   {socketError}
                 </div>
               ) : null}
+
+              {friendRequestNotice ? (
+                <div className="rounded-lg border border-cyan-500/35 bg-cyan-500/10 px-2.5 py-2 text-xs text-cyan-200">
+                  {friendRequestNotice}
+                </div>
+              ) : null}
             </div>
           </main>
 
@@ -1152,16 +1181,38 @@ export function ServersPage({ me }: ServersPageProps) {
                         {serverDetails.members.map((member) => (
                           <article key={member.userId} className="rounded-lg border border-ink-700 bg-ink-900/75 p-2.5">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <MaskAvatar
-                                  displayName={member.serverMask.displayName}
-                                  color={member.serverMask.color}
-                                  avatarUploadId={member.serverMask.avatarUploadId}
-                                  sizeClassName="h-6 w-6"
-                                  textClassName="text-[9px]"
-                                />
-                                <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
-                              </div>
+                              {member.userId === me.user.id ? (
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <MaskAvatar
+                                    displayName={member.serverMask.displayName}
+                                    color={member.serverMask.color}
+                                    avatarUploadId={member.serverMask.avatarUploadId}
+                                    sizeClassName="h-6 w-6"
+                                    textClassName="text-[9px]"
+                                  />
+                                  <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setMemberActionMenuUserId((current) =>
+                                      current === member.userId ? null : member.userId,
+                                    )
+                                  }
+                                  className="flex min-w-0 items-center gap-2 rounded-md border border-transparent px-1 py-0.5 text-left hover:border-ink-600"
+                                  title="Open member actions"
+                                >
+                                  <MaskAvatar
+                                    displayName={member.serverMask.displayName}
+                                    color={member.serverMask.color}
+                                    avatarUploadId={member.serverMask.avatarUploadId}
+                                    sizeClassName="h-6 w-6"
+                                    textClassName="text-[9px]"
+                                  />
+                                  <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
+                                </button>
+                              )}
                               <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
                                 {member.role}
                               </span>
@@ -1177,6 +1228,21 @@ export function ServersPage({ me }: ServersPageProps) {
                                     .map((roleId) => serverRoles.find((role) => role.id === roleId)?.name ?? 'unknown')
                                     .join(', ')}
                             </p>
+
+                            {memberActionMenuUserId === member.userId && member.userId !== me.user.id ? (
+                              <div className="mt-2 rounded-md border border-ink-700 bg-ink-800/80 p-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void onSendFriendRequestByUserId(member.userId);
+                                  }}
+                                  disabled={friendRequestPendingUserId === member.userId}
+                                  className="w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {friendRequestPendingUserId === member.userId ? 'Sending...' : 'Add Friend'}
+                                </button>
+                              </div>
+                            ) : null}
 
                             {canManageMembers && member.role !== 'OWNER' ? (
                               <div className="mt-2 rounded-md border border-ink-700 bg-ink-800/80 p-2">

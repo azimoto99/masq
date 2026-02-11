@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -194,10 +194,23 @@ const CHANNEL_MESSAGE_RATE_LIMIT_WINDOW_MS = 4000;
 const CHANNEL_MESSAGE_RATE_LIMIT_COUNT = 10;
 const WS_OPEN_STATE = 1;
 const FALLBACK_UPLOADS_DIRECTORY = './uploads';
+const FRIEND_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const FRIEND_CODE_LENGTH = 8;
+
+const generateFriendCode = (): string => {
+  const entropy = randomBytes(FRIEND_CODE_LENGTH);
+  let friendCode = '';
+  for (let index = 0; index < FRIEND_CODE_LENGTH; index += 1) {
+    const entropyIndex = entropy[index] % FRIEND_CODE_ALPHABET.length;
+    friendCode += FRIEND_CODE_ALPHABET[entropyIndex];
+  }
+  return friendCode;
+};
 
 const serializeUser = (user: UserRecord) => ({
   id: user.id,
   email: user.email,
+  friendCode: user.friendCode,
   createdAt: user.createdAt.toISOString(),
 });
 
@@ -288,6 +301,7 @@ const serializeServerRole = (role: ServerRoleRecord) => ({
 const serializeFriendUser = (user: FriendUserRecord) => ({
   id: user.id,
   email: user.email,
+  friendCode: user.friendCode,
   defaultMask: user.defaultMask,
 });
 
@@ -1558,6 +1572,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     return {
       id: user.id,
       email: user.email,
+      friendCode: user.friendCode,
       defaultMask,
     };
   };
@@ -1886,10 +1901,36 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }
 
     const passwordHash = await argon2.hash(body.password);
-    const user = await repo.createUser({
-      email: normalizedEmail,
-      passwordHash,
-    });
+    let user: UserRecord | null = null;
+    for (let attempt = 0; attempt < 8 && !user; attempt += 1) {
+      try {
+        user = await repo.createUser({
+          email: normalizedEmail,
+          friendCode: generateFriendCode(),
+          passwordHash,
+        });
+      } catch (error) {
+        const errorCode =
+          typeof error === 'object' && error !== null && 'code' in error
+            ? String((error as { code?: unknown }).code)
+            : '';
+        if (errorCode === 'P2002') {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!user) {
+      const duplicateEmail = await repo.findUserByEmail(normalizedEmail);
+      if (duplicateEmail) {
+        reply.code(409);
+        return { message: 'Email already registered' };
+      }
+
+      reply.code(500);
+      return { message: 'Failed to generate a unique friend code' };
+    }
 
     const token = await reply.jwtSign(
       {
@@ -2079,9 +2120,10 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }
 
     const fromUserId = request.user.sub;
+    const normalizedFriendCode = body.friendCode ? body.friendCode.trim().toUpperCase() : null;
     const targetUser = body.toUserId
       ? await repo.findUserById(body.toUserId)
-      : await repo.findUserByEmail((body.toEmail ?? '').toLowerCase());
+      : await repo.findUserByFriendCode(normalizedFriendCode ?? '');
 
     if (!targetUser) {
       reply.code(404);

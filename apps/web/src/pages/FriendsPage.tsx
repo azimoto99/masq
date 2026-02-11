@@ -26,7 +26,7 @@ interface FriendsPageProps {
 
 export function FriendsPage({ me }: FriendsPageProps) {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [friendCode, setFriendCode] = useState('');
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [incoming, setIncoming] = useState<IncomingFriendRequestItem[]>([]);
   const [outgoing, setOutgoing] = useState<OutgoingFriendRequestItem[]>([]);
@@ -76,8 +76,8 @@ export function FriendsPage({ me }: FriendsPageProps) {
   const handleSendRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) {
+    const normalizedFriendCode = friendCode.trim().toUpperCase();
+    if (!normalizedFriendCode) {
       return;
     }
 
@@ -86,14 +86,25 @@ export function FriendsPage({ me }: FriendsPageProps) {
     setNotice(null);
 
     try {
-      await sendFriendRequest({ toEmail: normalizedEmail });
-      setEmail('');
+      await sendFriendRequest({ friendCode: normalizedFriendCode });
+      setFriendCode('');
       setNotice('Friend request sent');
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to send friend request');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCopyFriendCode = async () => {
+    setError(null);
+    setNotice(null);
+    try {
+      await navigator.clipboard.writeText(me.user.friendCode);
+      setNotice('Friend code copied');
+    } catch {
+      setError('Could not copy friend code');
     }
   };
 
@@ -197,14 +208,29 @@ export function FriendsPage({ me }: FriendsPageProps) {
           <form onSubmit={handleSendRequest} className="rounded-3xl border border-ink-700 bg-ink-800/80 p-6">
             <h2 className="text-sm uppercase tracking-[0.28em] text-slate-500">Add Friend</h2>
             <p className="mt-2 text-xs text-slate-400">Signed in as {me.user.email}</p>
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-ink-700 bg-ink-900/70 px-3 py-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Your Friend Code</p>
+                <p className="font-mono text-sm text-cyan-200">{me.user.friendCode}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleCopyFriendCode();
+                }}
+                className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1 text-xs uppercase tracking-[0.15em] text-cyan-200 hover:border-cyan-400"
+              >
+                Copy
+              </button>
+            </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <input
                 className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-neon-400"
-                placeholder="friend@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                type="email"
-                data-testid="friends-add-email-input"
+                placeholder="Friend code (e.g. AB12CD34)"
+                value={friendCode}
+                onChange={(event) => setFriendCode(event.target.value.toUpperCase())}
+                type="text"
+                data-testid="friends-add-code-input"
                 required
               />
               <button
@@ -228,6 +254,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
               {incoming.map((item) => (
                 <article key={item.request.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
                   <p className="text-sm text-white">{item.fromUser.email}</p>
+                  <p className="mt-1 font-mono text-[11px] text-cyan-200">Code: {item.fromUser.friendCode}</p>
                   {item.fromUser.defaultMask ? (
                     <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
                       <MaskAvatar
@@ -281,6 +308,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
               {outgoing.map((item) => (
                 <article key={item.request.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
                   <p className="text-sm text-white">{item.toUser.email}</p>
+                  <p className="mt-1 font-mono text-[11px] text-cyan-200">Code: {item.toUser.friendCode}</p>
                   <button
                     type="button"
                     onClick={() => {
@@ -305,6 +333,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
             {friends.map((friend) => (
               <article key={friend.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
                 <p className="text-sm text-white">{friend.email}</p>
+                <p className="mt-1 font-mono text-[11px] text-cyan-200">Code: {friend.friendCode}</p>
                 {friend.defaultMask ? (
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                     <MaskAvatar
