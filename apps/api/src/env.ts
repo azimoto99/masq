@@ -40,6 +40,9 @@ const RawEnvSchema = z.object({
   COOKIE_DOMAIN: z.string().optional(),
   API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   API_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  LIVEKIT_URL: z.string().url().optional(),
+  LIVEKIT_API_KEY: z.string().min(1).optional(),
+  LIVEKIT_API_SECRET: z.string().min(1).optional(),
   TRUST_PROXY: BooleanFromEnvSchema.default(false),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
@@ -62,6 +65,16 @@ const corsAllowNoOrigin = parsed.data.CORS_ALLOW_NO_ORIGIN ?? parsed.data.NODE_E
 
 if (parsed.data.COOKIE_SAME_SITE === 'none' && !cookieSecure) {
   throw new Error('COOKIE_SAME_SITE=none requires COOKIE_SECURE=true');
+}
+
+const livekitConfigCount = [
+  parsed.data.LIVEKIT_URL,
+  parsed.data.LIVEKIT_API_KEY,
+  parsed.data.LIVEKIT_API_SECRET,
+].filter((value) => typeof value === 'string' && value.length > 0).length;
+
+if (livekitConfigCount > 0 && livekitConfigCount < 3) {
+  throw new Error('LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together');
 }
 
 export const ENV = {

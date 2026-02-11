@@ -13,6 +13,7 @@ import {
   DmStartResponseSchema,
   DmThreadsResponseSchema,
   DmThreadResponseSchema,
+  CreateRtcSessionResponseSchema,
   GetServerResponseSchema,
   ListRoomsResponseSchema,
   ServerRoleResponseSchema,
@@ -20,6 +21,7 @@ import {
   ListServersResponseSchema,
   MeResponseSchema,
   ModerateRoomResponseSchema,
+  type RtcContextType,
   type ServerPermission,
 } from '@masq/shared';
 import { buildApp } from '../src/app.js';
@@ -34,6 +36,8 @@ import type {
   CreateServerInput,
   CreateServerInviteInput,
   CreateServerMessageInput,
+  CreateVoiceParticipantInput,
+  CreateVoiceSessionInput,
   CreateRoomInput,
   CreateRoomModerationInput,
   CreateUserInput,
@@ -61,6 +65,8 @@ import type {
   UpsertDmParticipantInput,
   UpsertFriendRequestInput,
   UserRecord,
+  VoiceParticipantRecord,
+  VoiceSessionRecord,
 } from '../src/domain/repository.js';
 import type { Env } from '../src/env.js';
 
@@ -102,6 +108,8 @@ class InMemoryRepository implements MasqRepository {
   private dmThreadIdByPair = new Map<string, string>();
   private dmParticipantsByComposite = new Map<string, { threadId: string; userId: string; activeMaskId: string }>();
   private dmMessagesByThread = new Map<string, DmMessageRecord[]>();
+  private voiceSessionsById = new Map<string, VoiceSessionRecord>();
+  private voiceParticipantsById = new Map<string, VoiceParticipantRecord>();
 
   private compositeKey(roomId: string, maskId: string) {
     return `${roomId}:${maskId}`;
@@ -1220,6 +1228,112 @@ class InMemoryRepository implements MasqRepository {
     return message;
   }
 
+  async findVoiceSessionById(voiceSessionId: string) {
+    return this.voiceSessionsById.get(voiceSessionId) ?? null;
+  }
+
+  async findActiveVoiceSessionByContext(contextType: RtcContextType, contextId: string) {
+    const matches = Array.from(this.voiceSessionsById.values())
+      .filter((session) => session.contextType === contextType && session.contextId === contextId && session.endedAt === null)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    return matches[0] ?? null;
+  }
+
+  async createVoiceSession(input: CreateVoiceSessionInput) {
+    const session: VoiceSessionRecord = {
+      id: randomUUID(),
+      contextType: input.contextType,
+      contextId: input.contextId,
+      livekitRoomName: input.livekitRoomName,
+      createdAt: new Date(),
+      endedAt: null,
+    };
+
+    this.voiceSessionsById.set(session.id, session);
+    return session;
+  }
+
+  async endVoiceSession(voiceSessionId: string, endedAt: Date) {
+    const session = this.voiceSessionsById.get(voiceSessionId);
+    if (!session) {
+      throw new Error('Voice session not found');
+    }
+
+    const updated: VoiceSessionRecord = {
+      ...session,
+      endedAt,
+    };
+
+    this.voiceSessionsById.set(voiceSessionId, updated);
+    return updated;
+  }
+
+  async createVoiceParticipant(input: CreateVoiceParticipantInput) {
+    const mask = this.masksById.get(input.maskId);
+    if (!mask) {
+      throw new Error('Mask missing');
+    }
+
+    const participant: VoiceParticipantRecord = {
+      id: randomUUID(),
+      voiceSessionId: input.voiceSessionId,
+      userId: input.userId,
+      maskId: input.maskId,
+      joinedAt: new Date(),
+      leftAt: null,
+      isServerMuted: input.isServerMuted ?? false,
+      mask,
+    };
+
+    this.voiceParticipantsById.set(participant.id, participant);
+    return participant;
+  }
+
+  async listActiveVoiceParticipants(voiceSessionId: string) {
+    return Array.from(this.voiceParticipantsById.values())
+      .filter((participant) => participant.voiceSessionId === voiceSessionId && participant.leftAt === null)
+      .sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+  }
+
+  async markVoiceParticipantsLeft(voiceSessionId: string, userId: string, leftAt: Date) {
+    let count = 0;
+    for (const [participantId, participant] of this.voiceParticipantsById.entries()) {
+      if (participant.voiceSessionId !== voiceSessionId || participant.userId !== userId || participant.leftAt !== null) {
+        continue;
+      }
+
+      this.voiceParticipantsById.set(participantId, {
+        ...participant,
+        leftAt,
+      });
+      count += 1;
+    }
+
+    return count;
+  }
+
+  async setVoiceParticipantsMuted(voiceSessionId: string, targetMaskId: string, isServerMuted: boolean) {
+    let count = 0;
+    for (const [participantId, participant] of this.voiceParticipantsById.entries()) {
+      if (
+        participant.voiceSessionId !== voiceSessionId ||
+        participant.maskId !== targetMaskId ||
+        participant.leftAt !== null
+      ) {
+        continue;
+      }
+
+      this.voiceParticipantsById.set(participantId, {
+        ...participant,
+        isServerMuted,
+      });
+      count += 1;
+    }
+
+    return count;
+  }
+
   setMaskActive(maskId: string, active: boolean) {
     if (active) {
       const room: RoomRecord = {
@@ -1304,6 +1418,9 @@ const createTestEnv = (overrides: Partial<Env> = {}): Env => ({
   COOKIE_DOMAIN: undefined,
   API_RATE_LIMIT_MAX: 120,
   API_RATE_LIMIT_WINDOW_MS: 60_000,
+  LIVEKIT_URL: 'https://example.livekit.test',
+  LIVEKIT_API_KEY: 'test-api-key',
+  LIVEKIT_API_SECRET: 'test-api-secret',
   TRUST_PROXY: false,
   LOG_LEVEL: 'error',
   ...overrides,
@@ -1892,6 +2009,122 @@ describe('auth and mask flows', () => {
     expect(strangerStartResponse.statusCode).toBe(403);
   });
 
+  it('requires auth for RTC session creation', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/rtc/session',
+      payload: {
+        contextType: 'SERVER_CHANNEL',
+        contextId: randomUUID(),
+        maskId: randomUUID(),
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('issues RTC token only for authorized server channel members using active channel identity', async () => {
+    const ownerCookie = await registerUser(app, 'rtc-owner@example.com');
+    const memberCookie = await registerUser(app, 'rtc-member@example.com');
+    const strangerCookie = await registerUser(app, 'rtc-stranger@example.com');
+
+    const ownerMask = await createMask(app, ownerCookie, 'RTC Owner');
+    const memberMask = await createMask(app, memberCookie, 'RTC Member');
+    const strangerMask = await createMask(app, strangerCookie, 'RTC Stranger');
+
+    const createServerResponse = await app.inject({
+      method: 'POST',
+      url: '/servers',
+      headers: { cookie: ownerCookie },
+      payload: {
+        name: 'RTC Guild',
+      },
+    });
+    expect(createServerResponse.statusCode).toBe(201);
+    const createdServer = CreateServerResponseSchema.parse(createServerResponse.json()).server;
+
+    const ownerServerStateResponse = await app.inject({
+      method: 'GET',
+      url: `/servers/${createdServer.id}`,
+      headers: { cookie: ownerCookie },
+    });
+    expect(ownerServerStateResponse.statusCode).toBe(200);
+    const ownerServerState = GetServerResponseSchema.parse(ownerServerStateResponse.json());
+    const channelId = ownerServerState.channels[0]?.id;
+    expect(channelId).toBeDefined();
+
+    const createInviteResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${createdServer.id}/invites`,
+      headers: { cookie: ownerCookie },
+      payload: {},
+    });
+    expect(createInviteResponse.statusCode).toBe(201);
+    const invite = CreateServerInviteResponseSchema.parse(createInviteResponse.json()).invite;
+
+    const memberJoinResponse = await app.inject({
+      method: 'POST',
+      url: '/servers/join',
+      headers: { cookie: memberCookie },
+      payload: {
+        inviteCode: invite.code,
+        serverMaskId: memberMask.id,
+      },
+    });
+    expect(memberJoinResponse.statusCode).toBe(200);
+
+    const ownerRtcResponse = await app.inject({
+      method: 'POST',
+      url: '/rtc/session',
+      headers: { cookie: ownerCookie },
+      payload: {
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+        maskId: ownerMask.id,
+      },
+    });
+    expect(ownerRtcResponse.statusCode).toBe(200);
+    const ownerRtcPayload = CreateRtcSessionResponseSchema.parse(ownerRtcResponse.json());
+    expect(ownerRtcPayload.token.length).toBeGreaterThan(10);
+    expect(ownerRtcPayload.livekitRoomName.length).toBeGreaterThan(5);
+
+    const memberRtcResponse = await app.inject({
+      method: 'POST',
+      url: '/rtc/session',
+      headers: { cookie: memberCookie },
+      payload: {
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+        maskId: memberMask.id,
+      },
+    });
+    expect(memberRtcResponse.statusCode).toBe(200);
+
+    const strangerRtcResponse = await app.inject({
+      method: 'POST',
+      url: '/rtc/session',
+      headers: { cookie: strangerCookie },
+      payload: {
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+        maskId: strangerMask.id,
+      },
+    });
+    expect(strangerRtcResponse.statusCode).toBe(403);
+
+    const wrongMaskResponse = await app.inject({
+      method: 'POST',
+      url: '/rtc/session',
+      headers: { cookie: memberCookie },
+      payload: {
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+        maskId: ownerMask.id,
+      },
+    });
+    expect(wrongMaskResponse.statusCode).toBe(403);
+  });
+
   it('supports server create/invite/join/channel and kick authorization flow', async () => {
     const ownerCookie = await registerUser(app, 'owner-server@example.com');
     const memberCookie = await registerUser(app, 'member-server@example.com');
@@ -2302,4 +2535,7 @@ describe('auth and mask flows', () => {
     expect(ownerSetOwnerChannelMaskResponse.json().mask.maskId).toBe(ownerMask.id);
   });
 });
+
+
+
 

@@ -33,6 +33,7 @@ import {
   updateServerRole,
 } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
+import { RTCPanel } from '../components/RTCPanel';
 
 interface ServersPageProps {
   me: MeResponse;
@@ -145,6 +146,7 @@ export function ServersPage({ me }: ServersPageProps) {
     [channelMembers, me.user.id],
   );
   const currentChannelMaskId = myChannelMember?.mask.maskId ?? myServerMember?.serverMask.id ?? '';
+  const canModerateRtc = myServerMember?.role === 'OWNER' || myServerMember?.role === 'ADMIN';
 
   const onlineUserIds = useMemo(
     () => new Set(channelMembers.map((member) => member.userId)),
@@ -936,6 +938,18 @@ export function ServersPage({ me }: ServersPageProps) {
                         </div>
                       ) : null}
                     </div>
+
+                    <RTCPanel
+                      title="Channel RTC"
+                      contextType="SERVER_CHANNEL"
+                      contextId={selectedChannel.id}
+                      maskId={currentChannelMaskId || null}
+                      actorMaskId={currentChannelMaskId || null}
+                      canModerate={canModerateRtc}
+                      canEndCall={canModerateRtc}
+                      disabled={!currentChannelMaskId}
+                      disabledReason={currentChannelMaskId ? undefined : 'Select a channel mask before joining call.'}
+                    />
 
                     <div
                       ref={messageListRef}

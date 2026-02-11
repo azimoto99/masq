@@ -45,6 +45,12 @@ enum ChannelIdentityMode {
   CHANNEL_MASK
 }
 
+enum VoiceContextType {
+  SERVER_CHANNEL
+  DM_THREAD
+  EPHEMERAL_ROOM
+}
+
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique
@@ -65,6 +71,7 @@ model User {
   serverMemberships      ServerMember[]
   serverMemberRoles      ServerMemberRole[]
   channelMemberIdentities ChannelMemberIdentity[]
+  voiceParticipants      VoiceParticipant[]
 }
 
 model Mask {
@@ -86,6 +93,7 @@ model Mask {
   serverMemberships  ServerMember[]    @relation("ServerMemberMask")
   serverMessages     ServerMessage[]
   channelMemberIdentities ChannelMemberIdentity[]
+  voiceParticipants  VoiceParticipant[]
 }
 
 model Room {
@@ -328,5 +336,36 @@ model DMMessage {
   mask   Mask     @relation(fields: [maskId], references: [id], onDelete: Restrict)
 
   @@index([threadId, createdAt])
+}
+
+model VoiceSession {
+  id              String           @id @default(uuid()) @db.Uuid
+  contextType     VoiceContextType
+  contextId       String           @db.Uuid
+  livekitRoomName String           @unique
+  createdAt       DateTime         @default(now())
+  endedAt         DateTime?
+
+  participants VoiceParticipant[]
+
+  @@index([contextType, contextId, endedAt])
+}
+
+model VoiceParticipant {
+  id             String   @id @default(uuid()) @db.Uuid
+  voiceSessionId String   @db.Uuid
+  userId         String   @db.Uuid
+  maskId         String   @db.Uuid
+  joinedAt       DateTime @default(now())
+  leftAt         DateTime?
+  isServerMuted  Boolean  @default(false)
+
+  voiceSession VoiceSession @relation(fields: [voiceSessionId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mask         Mask         @relation(fields: [maskId], references: [id], onDelete: Restrict)
+
+  @@index([voiceSessionId, leftAt, joinedAt])
+  @@index([voiceSessionId, maskId, leftAt])
+  @@index([voiceSessionId, userId, leftAt])
 }
 

@@ -12,6 +12,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError, getDmThread, listDmThreads, setDmMask } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
+import { RTCPanel } from '../components/RTCPanel';
 
 interface DmPageProps {
   me: MeResponse;
@@ -417,6 +418,17 @@ export function DmPage({ me }: DmPageProps) {
                     </div>
                   ) : null}
                 </div>
+
+                <RTCPanel
+                  title="DM RTC"
+                  contextType="DM_THREAD"
+                  contextId={selectedThreadId}
+                  maskId={activeMaskId}
+                  actorMaskId={activeMaskId}
+                  canEndCall={Boolean(activeMaskId)}
+                  disabled={!activeMaskId}
+                  disabledReason={activeMaskId ? undefined : 'Select an active mask to join call.'}
+                />
 
                 <div ref={messageListRef} className="h-[420px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
                   <div className="space-y-3">

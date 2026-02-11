@@ -4,6 +4,7 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 
 ## Stack
 - API: Fastify + WebSocket, Prisma (Postgres), ioredis (Redis)
+- RTC media plane: LiveKit (audio/video/screen share)
 - Auth: Argon2 password hashing + JWT access token in httpOnly cookie
 - Security hardening: centralized error handling, request rate limiting, structured pino logging, message sanitization
 - Web: React + Vite + Tailwind
@@ -51,6 +52,10 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `GET /dm/threads`
 - `GET /dm/:threadId`
 - `POST /dm/:threadId/mask` `{ maskId }`
+- `POST /rtc/session` `{ contextType, contextId, maskId }`
+- `POST /rtc/session/:id/leave`
+- `POST /rtc/session/:id/mute` `{ actorMaskId, targetMaskId }`
+- `POST /rtc/session/:id/end` `{ actorMaskId }`
 - `GET /rooms?maskId=<uuid>`
 - `POST /rooms` `{ maskId, title, kind, expiresAt?, locked?, fogLevel?, messageDecayMinutes? }`
 - `POST /rooms/:roomId/join` `{ maskId }`
@@ -110,6 +115,17 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `NEW_CHANNEL_MESSAGE { message }`
 - Message body limit is `1000` characters (validated + sanitized server-side)
 
+## RTC (LiveKit)
+- API remains signaling/auth/control; LiveKit carries WebRTC media.
+- Join auth is context-scoped and mask-scoped:
+  - `SERVER_CHANNEL`: server member + active channel identity mask
+  - `DM_THREAD`: DM participant + friendship check
+  - `EPHEMERAL_ROOM`: room membership + room not expired
+- Server/room moderation:
+  - `POST /rtc/session/:id/mute` (server OWNER/ADMIN or room HOST)
+  - `POST /rtc/session/:id/end` (server OWNER/ADMIN, room HOST, or DM participant)
+- Ephemeral room expiry automatically ends active RTC session for that room.
+
 ## Environment
 Create `apps/api/.env` for local overrides.
 
@@ -150,6 +166,11 @@ COOKIE_DOMAIN=
 # API rate limit
 API_RATE_LIMIT_MAX=120
 API_RATE_LIMIT_WINDOW_MS=60000
+
+# LiveKit RTC
+LIVEKIT_URL=
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
 ```
 
 ## Deployment Notes
@@ -159,6 +180,16 @@ API_RATE_LIMIT_WINDOW_MS=60000
 - Keep `TRUST_PROXY=true` when running behind a reverse proxy/load balancer.
 - Run `pnpm prisma:migrate` as part of deployment.
 - Expose websocket upgrades for `/ws` in your reverse proxy.
+- Render hosts API/signaling; LiveKit hosts media (SFU/TURN/UDP). Do not host WebRTC media directly on Render.
+- Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on the API service.
+- For Windows desktop builds (Tauri/Electron), allow microphone/camera/screen-capture permissions.
+
+## RTC Smoke Test
+1. Start two users in the same server channel and click `Join Call`; confirm two-way audio.
+2. Toggle both cameras on; confirm both video tiles render.
+3. Start screen share from one user; confirm dominant screen tile appears and second share is blocked.
+4. Open DM thread for same users and verify audio/video connection there.
+5. Open EPHEMERAL room call and verify new join attempts fail after room TTL expiry.
 
 ## E2E Smoke Test
 - Playwright smoke test: `tests/e2e/smoke.spec.ts`
@@ -174,7 +205,7 @@ API_RATE_LIMIT_WINDOW_MS=60000
   ```
 
 ## Repo Layout
-- `apps/api`: Fastify API + Prisma + websocket + auth/masks/friends/dm/servers/rooms
+- `apps/api`: Fastify API + Prisma + websocket + auth/masks/friends/dm/servers/rooms/rtc
 - `apps/web`: Vite React client
 - `packages/shared`: Zod schemas and shared types
 - `tests/e2e`: Playwright smoke tests

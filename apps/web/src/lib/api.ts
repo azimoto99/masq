@@ -47,6 +47,13 @@ import {
   SetServerMemberRolesResponseSchema,
   SetDmMaskRequestSchema,
   SetDmMaskResponseSchema,
+  CreateRtcSessionRequestSchema,
+  CreateRtcSessionResponseSchema,
+  LeaveRtcSessionResponseSchema,
+  MuteRtcParticipantRequestSchema,
+  MuteRtcParticipantResponseSchema,
+  EndRtcSessionRequestSchema,
+  EndRtcSessionResponseSchema,
   ServerRoleResponseSchema,
   StartDmRequestSchema,
   UpdateServerRoleRequestSchema,
@@ -99,6 +106,13 @@ import {
   type SetServerMemberRolesResponse,
   type SetDmMaskRequest,
   type SetDmMaskResponse,
+  type CreateRtcSessionRequest,
+  type CreateRtcSessionResponse,
+  type LeaveRtcSessionResponse,
+  type MuteRtcParticipantRequest,
+  type MuteRtcParticipantResponse,
+  type EndRtcSessionRequest,
+  type EndRtcSessionResponse,
   type ServerRoleResponse,
   type StartDmRequest,
   type UpdateServerRoleRequest,
@@ -387,5 +401,32 @@ export const getDmThread = async (threadId: string): Promise<DmThreadResponse> =
 export const setDmMask = async (threadId: string, input: SetDmMaskRequest): Promise<SetDmMaskResponse> => {
   const payload = SetDmMaskRequestSchema.parse(input);
   return request(`/dm/${threadId}/mask`, { method: 'POST', body: payload }, SetDmMaskResponseSchema);
+};
+
+export const createRtcSession = async (
+  input: CreateRtcSessionRequest,
+): Promise<CreateRtcSessionResponse> => {
+  const payload = CreateRtcSessionRequestSchema.parse(input);
+  return request('/rtc/session', { method: 'POST', body: payload }, CreateRtcSessionResponseSchema);
+};
+
+export const leaveRtcSession = async (sessionId: string): Promise<LeaveRtcSessionResponse> => {
+  return request(`/rtc/session/${sessionId}/leave`, { method: 'POST' }, LeaveRtcSessionResponseSchema);
+};
+
+export const muteRtcParticipant = async (
+  sessionId: string,
+  input: MuteRtcParticipantRequest,
+): Promise<MuteRtcParticipantResponse> => {
+  const payload = MuteRtcParticipantRequestSchema.parse(input);
+  return request(`/rtc/session/${sessionId}/mute`, { method: 'POST', body: payload }, MuteRtcParticipantResponseSchema);
+};
+
+export const endRtcSession = async (
+  sessionId: string,
+  input: EndRtcSessionRequest,
+): Promise<EndRtcSessionResponse> => {
+  const payload = EndRtcSessionRequestSchema.parse(input);
+  return request(`/rtc/session/${sessionId}/end`, { method: 'POST', body: payload }, EndRtcSessionResponseSchema);
 };
 

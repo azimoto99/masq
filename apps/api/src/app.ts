@@ -11,6 +11,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import argon2 from 'argon2';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import {
@@ -30,6 +31,8 @@ import {
   CreateServerRoleRequestSchema,
   CreateRoomRequestSchema,
   CreateRoomResponseSchema,
+  CreateRtcSessionRequestSchema,
+  CreateRtcSessionResponseSchema,
   DEFAULT_SERVER_ROLE_ADMIN_NAME,
   DEFAULT_SERVER_ROLE_MEMBER_NAME,
   DeleteServerChannelResponseSchema,
@@ -37,6 +40,8 @@ import {
   DmThreadParamsSchema,
   DmThreadResponseSchema,
   DmThreadsResponseSchema,
+  EndRtcSessionRequestSchema,
+  EndRtcSessionResponseSchema,
   DEFAULT_MESSAGE_DECAY_MINUTES,
   DEFAULT_MUTE_MINUTES,
   DeleteMaskParamsSchema,
@@ -68,6 +73,8 @@ import {
   MAX_ROOM_MESSAGE_LENGTH,
   MAX_MUTE_MINUTES,
   MeResponseSchema,
+  MuteRtcParticipantRequestSchema,
+  MuteRtcParticipantResponseSchema,
   ModerateRoomParamsSchema,
   ModerateRoomResponseSchema,
   MuteRoomMemberRequestSchema,
@@ -85,11 +92,14 @@ import {
   SetServerMemberRolesResponseSchema,
   SetDmMaskRequestSchema,
   SetDmMaskResponseSchema,
+  LeaveRtcSessionResponseSchema,
+  RtcSessionParamsSchema,
   ServerSocketEventSchema,
   StartDmRequestSchema,
   UpdateServerSettingsRequestSchema,
   UpdateServerSettingsResponseSchema,
   UpdateServerRoleRequestSchema,
+  type RtcContextType,
   type Channel,
   type MembershipRole,
   type ServerPermission,
@@ -124,6 +134,8 @@ import type {
   RoomModerationRecord,
   RoomRecord,
   UserRecord,
+  VoiceParticipantRecord,
+  VoiceSessionRecord,
 } from './domain/repository.js';
 
 interface BuildAppOptions {
@@ -364,6 +376,31 @@ const serializeServerMessage = (message: ServerMessageRecord) => ({
   mask: serializeSocketMaskIdentity(message.mask),
 });
 
+const serializeVoiceSession = (session: VoiceSessionRecord) => ({
+  id: session.id,
+  contextType: session.contextType,
+  contextId: session.contextId,
+  livekitRoomName: session.livekitRoomName,
+  createdAt: session.createdAt.toISOString(),
+  endedAt: session.endedAt ? session.endedAt.toISOString() : null,
+});
+
+const serializeVoiceParticipant = (participant: VoiceParticipantRecord) => ({
+  id: participant.id,
+  voiceSessionId: participant.voiceSessionId,
+  userId: participant.userId,
+  maskId: participant.maskId,
+  joinedAt: participant.joinedAt.toISOString(),
+  leftAt: participant.leftAt ? participant.leftAt.toISOString() : null,
+  isServerMuted: participant.isServerMuted,
+  mask: {
+    id: participant.mask.id,
+    displayName: participant.mask.displayName,
+    color: participant.mask.color,
+    avatarSeed: participant.mask.avatarSeed,
+  },
+});
+
 const serializeModeration = (moderation: RoomModerationRecord) => ({
   id: moderation.id,
   roomId: moderation.roomId,
@@ -582,6 +619,89 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
   const dmSockets = new Map<string, Set<WebSocket>>();
   const channelSockets = new Map<string, Set<WebSocket>>();
   const roomExpiryTimers = new Map<string, NodeJS.Timeout>();
+  const livekitUrl = env.LIVEKIT_URL ?? null;
+  const livekitApiKey = env.LIVEKIT_API_KEY ?? null;
+  const livekitApiSecret = env.LIVEKIT_API_SECRET ?? null;
+  const livekitConfigured = Boolean(livekitUrl && livekitApiKey && livekitApiSecret);
+  const roomServiceClient = livekitConfigured
+    ? new RoomServiceClient(livekitUrl as string, livekitApiKey as string, livekitApiSecret as string)
+    : null;
+
+  type AuthorizedRtcContext =
+    | {
+        contextType: 'SERVER_CHANNEL';
+        contextId: string;
+        channel: ChannelRecord;
+        server: ServerRecord;
+        member: ServerMemberRecord;
+        mask: MaskRecord;
+      }
+    | {
+        contextType: 'DM_THREAD';
+        contextId: string;
+        thread: DmThreadRecord;
+        participant: DmParticipantRecord;
+        mask: MaskRecord;
+      }
+    | {
+        contextType: 'EPHEMERAL_ROOM';
+        contextId: string;
+        room: RoomRecord;
+        membership: RoomMembershipRecord;
+        mask: MaskRecord;
+      };
+
+  interface RtcParticipantMetadata {
+    userId: string;
+    maskId: string;
+    displayName: string;
+    color: string;
+    avatarSeed: string;
+    contextType: RtcContextType;
+    contextId: string;
+  }
+
+  const ensureLivekitAvailable = (reply: FastifyReply) => {
+    if (!livekitConfigured || !roomServiceClient || !livekitUrl || !livekitApiKey || !livekitApiSecret) {
+      reply.code(503).send({
+        message: 'LiveKit is not configured on this environment',
+      });
+      return null;
+    }
+
+    return {
+      roomServiceClient,
+      livekitUrl,
+      livekitApiKey,
+      livekitApiSecret,
+    };
+  };
+
+  const parseRtcParticipantMetadata = (rawMetadata: string | undefined): RtcParticipantMetadata | null => {
+    if (!rawMetadata) {
+      return null;
+    }
+
+    let parsedMetadata: unknown;
+    try {
+      parsedMetadata = JSON.parse(rawMetadata);
+    } catch {
+      return null;
+    }
+
+    const metadataSchema = z.object({
+      userId: z.string().uuid(),
+      maskId: z.string().uuid(),
+      displayName: z.string().min(1).max(40),
+      color: z.string().min(1).max(32),
+      avatarSeed: z.string().min(1).max(80),
+      contextType: z.enum(['SERVER_CHANNEL', 'DM_THREAD', 'EPHEMERAL_ROOM']),
+      contextId: z.string().uuid(),
+    });
+
+    const parsed = metadataSchema.safeParse(parsedMetadata);
+    return parsed.success ? parsed.data : null;
+  };
 
   const sendSocketEvent = (socket: WebSocket, event: ServerSocketEvent) => {
     if (socket.readyState !== WS_OPEN_STATE) {
@@ -1033,6 +1153,8 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       data: { roomId },
     });
 
+    void terminateVoiceSessionForContext('EPHEMERAL_ROOM', roomId);
+
     const sockets = roomSockets.get(roomId);
     if (!sockets) {
       return;
@@ -1203,6 +1325,246 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       messages: messages.map(serializeDmMessage),
       activeMask: serializeSocketMaskIdentity(meParticipant.activeMask),
     };
+  };
+
+  const authorizeRtcContext = async (input: {
+    userId: string;
+    contextType: RtcContextType;
+    contextId: string;
+    maskId: string;
+  }) => {
+    const mask = await repo.findMaskByIdForUser(input.maskId, input.userId);
+    if (!mask) {
+      return {
+        ok: false as const,
+        status: 403,
+        message: 'Mask does not belong to the authenticated user',
+      };
+    }
+
+    if (input.contextType === 'SERVER_CHANNEL') {
+      const channel = await repo.findChannelById(input.contextId);
+      if (!channel) {
+        return {
+          ok: false as const,
+          status: 404,
+          message: 'Channel not found',
+        };
+      }
+
+      const [server, member] = await Promise.all([
+        repo.findServerById(channel.serverId),
+        repo.findServerMember(channel.serverId, input.userId),
+      ]);
+
+      if (!server) {
+        return {
+          ok: false as const,
+          status: 404,
+          message: 'Server not found',
+        };
+      }
+
+      if (!member) {
+        return {
+          ok: false as const,
+          status: 403,
+          message: 'You are not a member of this server',
+        };
+      }
+
+      const effectiveMask = await resolveEffectiveChannelMask(repo, server, channel, member);
+      if (effectiveMask.id !== mask.id) {
+        return {
+          ok: false as const,
+          status: 403,
+          message: 'Mask does not match your active channel identity',
+        };
+      }
+
+      return {
+        ok: true as const,
+        value: {
+          contextType: input.contextType,
+          contextId: input.contextId,
+          channel,
+          server,
+          member,
+          mask,
+        } satisfies AuthorizedRtcContext,
+      };
+    }
+
+    if (input.contextType === 'DM_THREAD') {
+      const thread = await repo.findDmThreadById(input.contextId);
+      if (!thread) {
+        return {
+          ok: false as const,
+          status: 404,
+          message: 'DM thread not found',
+        };
+      }
+
+      const participant = await repo.findDmParticipant(thread.id, input.userId);
+      if (!participant) {
+        return {
+          ok: false as const,
+          status: 403,
+          message: 'Not authorized for this DM thread',
+        };
+      }
+
+      const peerUserId = getPeerUserIdForThread(thread, input.userId);
+      if (!peerUserId) {
+        return {
+          ok: false as const,
+          status: 403,
+          message: 'Not authorized for this DM thread',
+        };
+      }
+
+      const friendship = await repo.findFriendshipBetweenUsers(input.userId, peerUserId);
+      if (!friendship) {
+        return {
+          ok: false as const,
+          status: 403,
+          message: 'Only friends can join DM calls',
+        };
+      }
+
+      return {
+        ok: true as const,
+        value: {
+          contextType: input.contextType,
+          contextId: input.contextId,
+          thread,
+          participant,
+          mask,
+        } satisfies AuthorizedRtcContext,
+      };
+    }
+
+    const room = await repo.findRoomById(input.contextId);
+    if (!room) {
+      return {
+        ok: false as const,
+        status: 404,
+        message: 'Room not found',
+      };
+    }
+
+    if (isRoomExpired(room, new Date())) {
+      return {
+        ok: false as const,
+        status: 410,
+        message: 'Room is expired',
+      };
+    }
+
+    const membership = await repo.findRoomMembershipWithMask(room.id, mask.id);
+    if (!membership) {
+      return {
+        ok: false as const,
+        status: 403,
+        message: 'Mask is not a member of this room',
+      };
+    }
+
+    return {
+      ok: true as const,
+      value: {
+        contextType: input.contextType,
+        contextId: input.contextId,
+        room,
+        membership,
+        mask,
+      } satisfies AuthorizedRtcContext,
+    };
+  };
+
+  const buildRtcRoomName = (contextType: RtcContextType, contextId: string): string => {
+    return `masq-${contextType.toLowerCase()}-${contextId}-${randomUUID().slice(0, 8)}`;
+  };
+
+  const deleteLivekitRoomIfConfigured = async (roomName: string) => {
+    if (!roomServiceClient) {
+      return;
+    }
+
+    try {
+      await roomServiceClient.deleteRoom(roomName);
+    } catch (error) {
+      app.log.warn(
+        {
+          error,
+          roomName,
+        },
+        'Failed to delete LiveKit room',
+      );
+    }
+  };
+
+  const terminateVoiceSession = async (session: VoiceSessionRecord, endedAt: Date = new Date()) => {
+    if (session.endedAt) {
+      return session;
+    }
+
+    const activeParticipants = await repo.listActiveVoiceParticipants(session.id);
+    const users = new Set(activeParticipants.map((participant) => participant.userId));
+    for (const userId of users) {
+      await repo.markVoiceParticipantsLeft(session.id, userId, endedAt);
+    }
+
+    const endedSession = await repo.endVoiceSession(session.id, endedAt);
+    await deleteLivekitRoomIfConfigured(session.livekitRoomName);
+    return endedSession;
+  };
+
+  const terminateVoiceSessionForContext = async (contextType: RtcContextType, contextId: string) => {
+    const session = await repo.findActiveVoiceSessionByContext(contextType, contextId);
+    if (!session) {
+      return null;
+    }
+
+    return terminateVoiceSession(session, new Date());
+  };
+
+  const createRtcToken = async (input: {
+    livekitApiKey: string;
+    livekitApiSecret: string;
+    session: VoiceSessionRecord;
+    userId: string;
+    mask: MaskRecord;
+    contextType: RtcContextType;
+    contextId: string;
+    canPublish: boolean;
+  }) => {
+    const identity = `${input.userId}:${input.mask.id}:${randomUUID().slice(0, 8)}`;
+    const metadata = JSON.stringify({
+      userId: input.userId,
+      maskId: input.mask.id,
+      displayName: input.mask.displayName,
+      color: input.mask.color,
+      avatarSeed: input.mask.avatarSeed,
+      contextType: input.contextType,
+      contextId: input.contextId,
+    } satisfies RtcParticipantMetadata);
+
+    const accessToken = new AccessToken(input.livekitApiKey, input.livekitApiSecret, {
+      identity,
+      name: input.mask.displayName,
+      metadata,
+    });
+
+    accessToken.addGrant({
+      roomJoin: true,
+      room: input.session.livekitRoomName,
+      canPublish: input.canPublish,
+      canPublishData: true,
+      canSubscribe: true,
+    });
+
+    return accessToken.toJwt();
   };
 
   app.get('/api/health', { config: { rateLimit: false } }, async (_, reply) => {
@@ -1720,6 +2082,294 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     return SetDmMaskResponseSchema.parse({
       success: true,
       activeMask: serializeSocketMaskIdentity(updated.activeMask),
+    });
+  });
+
+  app.post('/rtc/session', { preHandler: [authenticate] }, async (request, reply) => {
+    const body = parseOrReply(CreateRtcSessionRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const livekit = ensureLivekitAvailable(reply);
+    if (!livekit) {
+      return;
+    }
+
+    const userId = request.user.sub;
+    const authorizedContext = await authorizeRtcContext({
+      userId,
+      contextType: body.contextType,
+      contextId: body.contextId,
+      maskId: body.maskId,
+    });
+    if (!authorizedContext.ok) {
+      reply.code(authorizedContext.status);
+      return { message: authorizedContext.message };
+    }
+
+    let session = await repo.findActiveVoiceSessionByContext(body.contextType, body.contextId);
+    if (!session) {
+      session = await repo.createVoiceSession({
+        contextType: body.contextType,
+        contextId: body.contextId,
+        livekitRoomName: buildRtcRoomName(body.contextType, body.contextId),
+      });
+    }
+
+    const existingParticipants = await repo.listActiveVoiceParticipants(session.id);
+    const existingMuted =
+      existingParticipants.find(
+        (participant) =>
+          participant.userId === userId &&
+          participant.maskId === authorizedContext.value.mask.id &&
+          participant.isServerMuted,
+      )?.isServerMuted ?? false;
+
+    const joinedAt = new Date();
+    await repo.markVoiceParticipantsLeft(session.id, userId, joinedAt);
+    await repo.createVoiceParticipant({
+      voiceSessionId: session.id,
+      userId,
+      maskId: authorizedContext.value.mask.id,
+      isServerMuted: existingMuted,
+    });
+
+    const participants = await repo.listActiveVoiceParticipants(session.id);
+    const me = participants.find(
+      (participant) =>
+        participant.userId === userId && participant.maskId === authorizedContext.value.mask.id,
+    );
+    const canPublish = !(me?.isServerMuted ?? false);
+
+    const token = await createRtcToken({
+      livekitApiKey: livekit.livekitApiKey,
+      livekitApiSecret: livekit.livekitApiSecret,
+      session,
+      userId,
+      mask: authorizedContext.value.mask,
+      contextType: body.contextType,
+      contextId: body.contextId,
+      canPublish,
+    });
+
+    return CreateRtcSessionResponseSchema.parse({
+      voiceSessionId: session.id,
+      livekitRoomName: session.livekitRoomName,
+      token,
+      livekitUrl: livekit.livekitUrl,
+      participants: participants.map(serializeVoiceParticipant),
+    });
+  });
+
+  app.post('/rtc/session/:id/leave', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(RtcSessionParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const userId = request.user.sub;
+    const session = await repo.findVoiceSessionById(params.id);
+    if (!session) {
+      reply.code(404);
+      return { message: 'Voice session not found' };
+    }
+
+    if (session.endedAt) {
+      return LeaveRtcSessionResponseSchema.parse({ success: true });
+    }
+
+    const activeParticipants = await repo.listActiveVoiceParticipants(session.id);
+    const isParticipant = activeParticipants.some((participant) => participant.userId === userId);
+    if (!isParticipant) {
+      reply.code(403);
+      return { message: 'Not authorized for this voice session' };
+    }
+
+    await repo.markVoiceParticipantsLeft(session.id, userId, new Date());
+
+    const remainingParticipants = await repo.listActiveVoiceParticipants(session.id);
+    if (remainingParticipants.length === 0) {
+      await terminateVoiceSession(session);
+    }
+
+    return LeaveRtcSessionResponseSchema.parse({ success: true });
+  });
+
+  app.post('/rtc/session/:id/mute', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(RtcSessionParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(MuteRtcParticipantRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const livekit = ensureLivekitAvailable(reply);
+    if (!livekit) {
+      return;
+    }
+
+    const userId = request.user.sub;
+    const session = await repo.findVoiceSessionById(params.id);
+    if (!session || session.endedAt) {
+      reply.code(404);
+      return { message: 'Voice session not found' };
+    }
+
+    const actorAuthorization = await authorizeRtcContext({
+      userId,
+      contextType: session.contextType,
+      contextId: session.contextId,
+      maskId: body.actorMaskId,
+    });
+    if (!actorAuthorization.ok) {
+      reply.code(actorAuthorization.status);
+      return { message: actorAuthorization.message };
+    }
+
+    if (session.contextType === 'DM_THREAD') {
+      reply.code(400);
+      return { message: 'DM voice calls do not support server mute' };
+    }
+
+    if (session.contextType === 'SERVER_CHANNEL') {
+      if (actorAuthorization.value.contextType !== 'SERVER_CHANNEL') {
+        reply.code(403);
+        return { message: 'Actor is not authorized for this server channel' };
+      }
+
+      const actorRole = actorAuthorization.value.member.role;
+      if (actorRole !== 'OWNER' && actorRole !== 'ADMIN') {
+        reply.code(403);
+        return { message: 'Only server owners/admins can mute participants' };
+      }
+    }
+
+    if (session.contextType === 'EPHEMERAL_ROOM') {
+      if (actorAuthorization.value.contextType !== 'EPHEMERAL_ROOM') {
+        reply.code(403);
+        return { message: 'Actor is not authorized for this room' };
+      }
+
+      if (actorAuthorization.value.membership.role !== 'HOST') {
+        reply.code(403);
+        return { message: 'Only room hosts can mute participants' };
+      }
+    }
+
+    if (body.actorMaskId === body.targetMaskId) {
+      reply.code(400);
+      return { message: 'Cannot mute your own mask' };
+    }
+
+    const activeParticipants = await repo.listActiveVoiceParticipants(session.id);
+    const targetParticipant = activeParticipants.find((participant) => participant.maskId === body.targetMaskId);
+    if (!targetParticipant) {
+      reply.code(404);
+      return { message: 'Target participant is not active in this voice session' };
+    }
+
+    try {
+      const livekitParticipants = await livekit.roomServiceClient.listParticipants(session.livekitRoomName);
+      const matchingIdentities = livekitParticipants
+        .filter((participant) => {
+          const metadata = parseRtcParticipantMetadata(participant.metadata);
+          return metadata?.maskId === body.targetMaskId;
+        })
+        .map((participant) => participant.identity);
+
+      for (const identity of matchingIdentities) {
+        await livekit.roomServiceClient.updateParticipant(session.livekitRoomName, identity, {
+          permission: {
+            canPublish: false,
+            canPublishData: true,
+            canSubscribe: true,
+          },
+        });
+      }
+    } catch (error) {
+      app.log.error(
+        {
+          error,
+          sessionId: session.id,
+          targetMaskId: body.targetMaskId,
+        },
+        'Failed to apply LiveKit mute policy',
+      );
+      reply.code(502);
+      return { message: 'Failed to apply mute policy to media session' };
+    }
+
+    await repo.setVoiceParticipantsMuted(session.id, body.targetMaskId, true);
+    const participants = await repo.listActiveVoiceParticipants(session.id);
+
+    return MuteRtcParticipantResponseSchema.parse({
+      success: true,
+      participants: participants.map(serializeVoiceParticipant),
+    });
+  });
+
+  app.post('/rtc/session/:id/end', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(RtcSessionParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(EndRtcSessionRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const userId = request.user.sub;
+    const session = await repo.findVoiceSessionById(params.id);
+    if (!session || session.endedAt) {
+      reply.code(404);
+      return { message: 'Voice session not found' };
+    }
+
+    const actorAuthorization = await authorizeRtcContext({
+      userId,
+      contextType: session.contextType,
+      contextId: session.contextId,
+      maskId: body.actorMaskId,
+    });
+    if (!actorAuthorization.ok) {
+      reply.code(actorAuthorization.status);
+      return { message: actorAuthorization.message };
+    }
+
+    if (session.contextType === 'SERVER_CHANNEL') {
+      if (actorAuthorization.value.contextType !== 'SERVER_CHANNEL') {
+        reply.code(403);
+        return { message: 'Actor is not authorized for this server channel' };
+      }
+
+      const actorRole = actorAuthorization.value.member.role;
+      if (actorRole !== 'OWNER' && actorRole !== 'ADMIN') {
+        reply.code(403);
+        return { message: 'Only server owners/admins can end calls' };
+      }
+    }
+
+    if (session.contextType === 'EPHEMERAL_ROOM') {
+      if (actorAuthorization.value.contextType !== 'EPHEMERAL_ROOM') {
+        reply.code(403);
+        return { message: 'Actor is not authorized for this room' };
+      }
+
+      if (actorAuthorization.value.membership.role !== 'HOST') {
+        reply.code(403);
+        return { message: 'Only room hosts can end calls' };
+      }
+    }
+
+    const ended = await terminateVoiceSession(session);
+    return EndRtcSessionResponseSchema.parse({
+      success: true,
+      session: serializeVoiceSession(ended),
     });
   });
 

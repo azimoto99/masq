@@ -17,6 +17,7 @@ export const MAX_INVITE_EXPIRY_MINUTES = 10_080;
 export const MAX_INVITE_USES = 100_000;
 export const MAX_SERVER_ROLE_NAME_LENGTH = 40;
 export const MAX_SERVER_ROLE_ASSIGNMENTS = 24;
+export const MAX_RTC_PARTICIPANT_DISPLAY_NAME_LENGTH = 40;
 
 export const RoomKindSchema = z.enum(['EPHEMERAL', 'RITUAL', 'NARRATIVE']);
 export type RoomKind = z.infer<typeof RoomKindSchema>;
@@ -35,6 +36,9 @@ export type ChannelType = z.infer<typeof ChannelTypeSchema>;
 
 export const ChannelIdentityModeSchema = z.enum(['SERVER_MASK', 'CHANNEL_MASK']);
 export type ChannelIdentityMode = z.infer<typeof ChannelIdentityModeSchema>;
+
+export const RtcContextTypeSchema = z.enum(['SERVER_CHANNEL', 'DM_THREAD', 'EPHEMERAL_ROOM']);
+export type RtcContextType = z.infer<typeof RtcContextTypeSchema>;
 
 export const ServerPermissionSchema = z.enum([
   'ManageChannels',
@@ -567,6 +571,72 @@ export const SetDmMaskResponseSchema = z.object({
   activeMask: SocketMaskIdentitySchema,
 });
 
+export const VoiceSessionSchema = z.object({
+  id: z.string().uuid(),
+  contextType: RtcContextTypeSchema,
+  contextId: z.string().uuid(),
+  livekitRoomName: z.string().min(1),
+  createdAt: z.string().datetime(),
+  endedAt: z.string().datetime().nullable(),
+});
+
+export const VoiceParticipantSchema = z.object({
+  id: z.string().uuid(),
+  voiceSessionId: z.string().uuid(),
+  userId: z.string().uuid(),
+  maskId: z.string().uuid(),
+  joinedAt: z.string().datetime(),
+  leftAt: z.string().datetime().nullable(),
+  isServerMuted: z.boolean(),
+  mask: z.object({
+    id: z.string().uuid(),
+    displayName: z.string().min(1).max(MAX_RTC_PARTICIPANT_DISPLAY_NAME_LENGTH),
+    color: z.string().min(1).max(32),
+    avatarSeed: z.string().min(1).max(80),
+  }),
+});
+
+export const CreateRtcSessionRequestSchema = z.object({
+  contextType: RtcContextTypeSchema,
+  contextId: z.string().uuid(),
+  maskId: z.string().uuid(),
+});
+
+export const CreateRtcSessionResponseSchema = z.object({
+  voiceSessionId: z.string().uuid(),
+  livekitRoomName: z.string().min(1),
+  token: z.string().min(1),
+  livekitUrl: z.string().url(),
+  participants: z.array(VoiceParticipantSchema),
+});
+
+export const RtcSessionParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const LeaveRtcSessionResponseSchema = z.object({
+  success: z.literal(true),
+});
+
+export const MuteRtcParticipantRequestSchema = z.object({
+  actorMaskId: z.string().uuid(),
+  targetMaskId: z.string().uuid(),
+});
+
+export const MuteRtcParticipantResponseSchema = z.object({
+  success: z.literal(true),
+  participants: z.array(VoiceParticipantSchema),
+});
+
+export const EndRtcSessionRequestSchema = z.object({
+  actorMaskId: z.string().uuid(),
+});
+
+export const EndRtcSessionResponseSchema = z.object({
+  success: z.literal(true),
+  session: VoiceSessionSchema,
+});
+
 export const JoinRoomSocketPayloadSchema = z.object({
   roomId: z.string().uuid(),
   maskId: z.string().uuid(),
@@ -853,6 +923,16 @@ export type DmThreadListItem = z.infer<typeof DmThreadListItemSchema>;
 export type DmThreadsResponse = z.infer<typeof DmThreadsResponseSchema>;
 export type DmThreadResponse = z.infer<typeof DmThreadResponseSchema>;
 export type SetDmMaskResponse = z.infer<typeof SetDmMaskResponseSchema>;
+export type VoiceSession = z.infer<typeof VoiceSessionSchema>;
+export type VoiceParticipant = z.infer<typeof VoiceParticipantSchema>;
+export type CreateRtcSessionRequest = z.infer<typeof CreateRtcSessionRequestSchema>;
+export type CreateRtcSessionResponse = z.infer<typeof CreateRtcSessionResponseSchema>;
+export type RtcSessionParams = z.infer<typeof RtcSessionParamsSchema>;
+export type LeaveRtcSessionResponse = z.infer<typeof LeaveRtcSessionResponseSchema>;
+export type MuteRtcParticipantRequest = z.infer<typeof MuteRtcParticipantRequestSchema>;
+export type MuteRtcParticipantResponse = z.infer<typeof MuteRtcParticipantResponseSchema>;
+export type EndRtcSessionRequest = z.infer<typeof EndRtcSessionRequestSchema>;
+export type EndRtcSessionResponse = z.infer<typeof EndRtcSessionResponseSchema>;
 export type JoinRoomSocketPayload = z.infer<typeof JoinRoomSocketPayloadSchema>;
 export type SendMessageSocketPayload = z.infer<typeof SendMessageSocketPayloadSchema>;
 export type JoinDmSocketPayload = z.infer<typeof JoinDmSocketPayloadSchema>;

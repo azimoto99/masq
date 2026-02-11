@@ -1,8 +1,8 @@
 ﻿# AGENTS.md - Masq Monorepo Guide
 
 ## Structure
-- `apps/api`: Fastify API, auth, mask/friends/DM/server/room routes, websocket, Prisma schema and migrations
-- `apps/web`: React + Vite UI with auth, home, masks, friends, DMs, servers, and room chat pages
+- `apps/api`: Fastify API, auth, mask/friends/DM/server/room/RTC routes, websocket, Prisma schema and migrations
+- `apps/web`: React + Vite UI with auth, home, masks, friends, DMs, servers, room chat, and RTC panel
 - `packages/shared`: shared zod schemas and exported TypeScript types
 - `docker-compose.yml`: Postgres + Redis for local dev
 
@@ -35,6 +35,18 @@ Run from repo root:
   - Persist messages in Postgres and broadcast mask-only identity fields.
   - Apply per-socket rate limiting to `SEND_MESSAGE`.
   - Sanitize message bodies server-side before persistence/broadcast.
+- RTC (`/rtc/*`) rules:
+  - Require `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in API env.
+  - Validate payloads with shared zod contracts.
+  - Enforce context auth before token issuance:
+    - `SERVER_CHANNEL`: membership + active channel identity mask.
+    - `DM_THREAD`: DM participant + friendship.
+    - `EPHEMERAL_ROOM`: room membership + room not expired.
+  - Mute/end permissions:
+    - Server: `OWNER`/`ADMIN` only.
+    - Ephemeral room: `HOST` only.
+    - DM end: either participant.
+  - Keep mask identity in LiveKit metadata only; never expose global identity in UI.
 
 ## Prisma Conventions
 - Update `apps/api/prisma/schema.prisma` first.
@@ -49,8 +61,10 @@ Run from repo root:
 - Friends + DM UI is in `apps/web/src/pages/FriendsPage.tsx` and `apps/web/src/pages/DmPage.tsx`.
 - Servers/channels/roles UI is in `apps/web/src/pages/ServersPage.tsx`.
 - Realtime room chat UI is in `apps/web/src/pages/RoomChatPage.tsx`.
+- Shared LiveKit UI is in `apps/web/src/components/RTCPanel.tsx` and reused by server, DM, and room pages.
 
 ## Notes
 - Web proxy expects API on `http://localhost:4000`.
 - Websocket endpoint is `/ws` with event-based messaging.
+- RTC control endpoints are `/rtc/session*`; media transport is LiveKit URL returned by API.
 - Message body max length is `1000` characters (shared schema constant).

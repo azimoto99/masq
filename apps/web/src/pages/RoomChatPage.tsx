@@ -23,6 +23,7 @@ import {
   setRoomLocked,
 } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
+import { RTCPanel } from '../components/RTCPanel';
 
 interface RoomChatPageProps {
   me: MeResponse;
@@ -725,6 +726,18 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                     </div>
                   ) : null}
                 </div>
+
+                <RTCPanel
+                  title="Room RTC"
+                  contextType="EPHEMERAL_ROOM"
+                  contextId={selectedRoomId}
+                  maskId={activeMaskId}
+                  actorMaskId={activeMaskId}
+                  canModerate={isHost}
+                  canEndCall={isHost}
+                  disabled={roomExpired || !activeMaskId}
+                  disabledReason={roomExpired ? 'Room expired. Calls are disabled.' : undefined}
+                />
 
                 <div ref={messageListRef} className="h-[420px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
                   <div className="space-y-3">

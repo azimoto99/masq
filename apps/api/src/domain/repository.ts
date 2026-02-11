@@ -3,6 +3,7 @@ import type {
   ChannelType,
   FriendRequestStatus,
   MembershipRole,
+  RtcContextType,
   RoomKind,
   ServerPermission,
   ServerMemberRole,
@@ -192,6 +193,26 @@ export interface DmMessageRecord {
   mask: MaskRecord;
 }
 
+export interface VoiceSessionRecord {
+  id: string;
+  contextType: RtcContextType;
+  contextId: string;
+  livekitRoomName: string;
+  createdAt: Date;
+  endedAt: Date | null;
+}
+
+export interface VoiceParticipantRecord {
+  id: string;
+  voiceSessionId: string;
+  userId: string;
+  maskId: string;
+  joinedAt: Date;
+  leftAt: Date | null;
+  isServerMuted: boolean;
+  mask: MaskRecord;
+}
+
 export interface CreateUserInput {
   email: string;
   passwordHash: string;
@@ -288,6 +309,19 @@ export interface CreateServerMessageInput {
   body: string;
 }
 
+export interface CreateVoiceSessionInput {
+  contextType: RtcContextType;
+  contextId: string;
+  livekitRoomName: string;
+}
+
+export interface CreateVoiceParticipantInput {
+  voiceSessionId: string;
+  userId: string;
+  maskId: string;
+  isServerMuted?: boolean;
+}
+
 export interface MasqRepository {
   pingDb(): Promise<void>;
   findUserByEmail(email: string): Promise<UserRecord | null>;
@@ -360,6 +394,18 @@ export interface MasqRepository {
   listDmParticipants(threadId: string): Promise<DmParticipantRecord[]>;
   listDmMessages(threadId: string): Promise<DmMessageRecord[]>;
   createDmMessage(input: CreateDmMessageInput): Promise<DmMessageRecord>;
+  findVoiceSessionById(voiceSessionId: string): Promise<VoiceSessionRecord | null>;
+  findActiveVoiceSessionByContext(contextType: RtcContextType, contextId: string): Promise<VoiceSessionRecord | null>;
+  createVoiceSession(input: CreateVoiceSessionInput): Promise<VoiceSessionRecord>;
+  endVoiceSession(voiceSessionId: string, endedAt: Date): Promise<VoiceSessionRecord>;
+  createVoiceParticipant(input: CreateVoiceParticipantInput): Promise<VoiceParticipantRecord>;
+  listActiveVoiceParticipants(voiceSessionId: string): Promise<VoiceParticipantRecord[]>;
+  markVoiceParticipantsLeft(voiceSessionId: string, userId: string, leftAt: Date): Promise<number>;
+  setVoiceParticipantsMuted(
+    voiceSessionId: string,
+    targetMaskId: string,
+    isServerMuted: boolean,
+  ): Promise<number>;
 }
 
 export interface RedisClient {

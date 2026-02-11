@@ -8,6 +8,8 @@ import type {
   CreateServerInput,
   CreateServerInviteInput,
   CreateServerMessageInput,
+  CreateVoiceParticipantInput,
+  CreateVoiceSessionInput,
   CreateMaskInput,
   CreateDmMessageInput,
   CreateMessageInput,
@@ -1011,6 +1013,101 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
           mask: true,
         },
       });
+    },
+
+    findVoiceSessionById(voiceSessionId: string) {
+      return prisma.voiceSession.findUnique({
+        where: { id: voiceSessionId },
+      });
+    },
+
+    findActiveVoiceSessionByContext(contextType, contextId) {
+      return prisma.voiceSession.findFirst({
+        where: {
+          contextType,
+          contextId,
+          endedAt: null,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    },
+
+    createVoiceSession(input: CreateVoiceSessionInput) {
+      return prisma.voiceSession.create({
+        data: {
+          contextType: input.contextType,
+          contextId: input.contextId,
+          livekitRoomName: input.livekitRoomName,
+        },
+      });
+    },
+
+    endVoiceSession(voiceSessionId: string, endedAt: Date) {
+      return prisma.voiceSession.update({
+        where: { id: voiceSessionId },
+        data: { endedAt },
+      });
+    },
+
+    createVoiceParticipant(input: CreateVoiceParticipantInput) {
+      return prisma.voiceParticipant.create({
+        data: {
+          voiceSessionId: input.voiceSessionId,
+          userId: input.userId,
+          maskId: input.maskId,
+          isServerMuted: input.isServerMuted ?? false,
+        },
+        include: {
+          mask: true,
+        },
+      });
+    },
+
+    listActiveVoiceParticipants(voiceSessionId: string) {
+      return prisma.voiceParticipant.findMany({
+        where: {
+          voiceSessionId,
+          leftAt: null,
+        },
+        include: {
+          mask: true,
+        },
+        orderBy: {
+          joinedAt: 'asc',
+        },
+      });
+    },
+
+    async markVoiceParticipantsLeft(voiceSessionId: string, userId: string, leftAt: Date) {
+      const updated = await prisma.voiceParticipant.updateMany({
+        where: {
+          voiceSessionId,
+          userId,
+          leftAt: null,
+        },
+        data: {
+          leftAt,
+        },
+      });
+
+      return updated.count;
+    },
+
+    async setVoiceParticipantsMuted(voiceSessionId: string, targetMaskId: string, isServerMuted: boolean) {
+      const updated = await prisma.voiceParticipant.updateMany({
+        where: {
+          voiceSessionId,
+          maskId: targetMaskId,
+          leftAt: null,
+        },
+        data: {
+          isServerMuted,
+        },
+      });
+
+      return updated.count;
     },
   };
 };
