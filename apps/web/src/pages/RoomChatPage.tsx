@@ -15,14 +15,17 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
+  buildUploadUrl,
   createRoom,
   exileRoomMember,
   joinRoom,
   listRooms,
   muteRoomMember,
   setRoomLocked,
+  uploadImage,
 } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
+import { MaskAvatar } from '../components/MaskAvatar';
 import { RTCPanel } from '../components/RTCPanel';
 
 interface RoomChatPageProps {
@@ -90,6 +93,8 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
   const [moderationPendingMaskId, setModerationPendingMaskId] = useState<string | null>(null);
   const [lockPending, setLockPending] = useState(false);
   const [composerBody, setComposerBody] = useState('');
+  const [composerImageFile, setComposerImageFile] = useState<File | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -319,7 +324,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
     };
   }, [activeMaskId, selectedRoomId]);
 
-  const sendMessage = (event: FormEvent<HTMLFormElement>) => {
+  const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
@@ -336,21 +341,43 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
       return;
     }
 
-    if (!composerBody.trim()) {
+    if (!composerBody.trim() && !composerImageFile) {
       return;
     }
 
-    const messageEvent = ClientSocketEventSchema.parse({
-      type: 'SEND_MESSAGE',
-      data: {
-        roomId: selectedRoomId,
-        maskId: activeMaskId,
-        body: composerBody,
-      },
-    });
+    setSendingMessage(true);
+    setSocketError(null);
+    try {
+      let imageUploadId: string | undefined;
+      if (composerImageFile) {
+        const upload = await uploadImage(
+          {
+            contextType: 'EPHEMERAL_ROOM',
+            contextId: selectedRoomId,
+          },
+          composerImageFile,
+        );
+        imageUploadId = upload.upload.id;
+      }
 
-    socketRef.current.send(JSON.stringify(messageEvent));
-    setComposerBody('');
+      const messageEvent = ClientSocketEventSchema.parse({
+        type: 'SEND_MESSAGE',
+        data: {
+          roomId: selectedRoomId,
+          maskId: activeMaskId,
+          body: composerBody,
+          imageUploadId,
+        },
+      });
+
+      socketRef.current.send(JSON.stringify(messageEvent));
+      setComposerBody('');
+      setComposerImageFile(null);
+    } catch (err) {
+      setSocketError(err instanceof ApiError ? err.message : 'Failed to send message');
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   const onCreateRoom = async (event: FormEvent<HTMLFormElement>) => {
@@ -531,7 +558,18 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                 </option>
               ))}
             </select>
-            {activeMask ? <p className="mt-2 text-xs text-slate-500">seed: {activeMask.avatarSeed}</p> : null}
+            {activeMask ? (
+              <div className="mt-2 flex items-center gap-2">
+                <MaskAvatar
+                  displayName={activeMask.displayName}
+                  color={activeMask.color}
+                  avatarUploadId={activeMask.avatarUploadId}
+                  sizeClassName="h-6 w-6"
+                  textClassName="text-[9px]"
+                />
+                <p className="text-xs text-slate-500">seed: {activeMask.avatarSeed}</p>
+              </div>
+            ) : null}
           </div>
 
           <form onSubmit={onCreateRoom} className="space-y-3 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
@@ -595,7 +633,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
               className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus:border-neon-400"
               value={joinRoomIdInput}
               onChange={(event) => setJoinRoomIdInput(event.target.value)}
-              placeholder="Room code (UUID)"
+              placeholder="Room code"
               required
             />
             <button
@@ -653,13 +691,13 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                 <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-xl font-semibold text-white">{room?.title ?? selectedRoomId}</h2>
+                      <h2 className="text-xl font-semibold text-white">{room?.title ?? 'Room'}</h2>
                       <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                         {room?.kind ?? 'CONNECTING'} - {socketStatus} - {room?.locked ? 'LOCKED' : 'OPEN'}
                       </p>
                       <div className="mt-2 flex items-center gap-2">
                         <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                          Room Code: {room?.id ?? selectedRoomId}
+                          Room code hidden for privacy
                         </p>
                         <button
                           type="button"
@@ -729,13 +767,36 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                       <article key={message.id} className="rounded-xl border border-ink-700 bg-ink-800/60 p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 text-sm">
-                            <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: message.mask.color }} />
+                            <MaskAvatar
+                              displayName={message.mask.displayName}
+                              color={message.mask.color}
+                              avatarUploadId={message.mask.avatarUploadId}
+                              sizeClassName="h-6 w-6"
+                              textClassName="text-[9px]"
+                            />
                             <span className="font-medium text-white">{message.mask.displayName}</span>
                             <span className="text-xs text-slate-500">{message.mask.avatarSeed}</span>
                           </div>
                           <span className="text-xs text-slate-500">{formatTimestamp(message.createdAt)}</span>
                         </div>
-                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                        {message.body ? (
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                        ) : null}
+                        {message.image ? (
+                          <a
+                            className="mt-2 block max-w-sm overflow-hidden rounded-lg border border-ink-700 bg-ink-900/70"
+                            href={buildUploadUrl(message.image.id)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <img
+                              src={buildUploadUrl(message.image.id)}
+                              alt={message.image.fileName}
+                              className="max-h-80 w-full object-contain"
+                              loading="lazy"
+                            />
+                          </a>
+                        ) : null}
                       </article>
                     ))}
                   </div>
@@ -750,8 +811,36 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                     onChange={(event) => setComposerBody(event.target.value)}
                     placeholder="Speak as your mask"
                     maxLength={MAX_ROOM_MESSAGE_LENGTH}
-                    disabled={roomExpired || socketStatus !== 'connected' || isMuted}
+                    disabled={roomExpired || socketStatus !== 'connected' || isMuted || sendingMessage}
                   />
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <label className="cursor-pointer rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-neon-400 hover:text-neon-100">
+                      Attach Image
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        disabled={roomExpired || socketStatus !== 'connected' || isMuted || sendingMessage}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          setComposerImageFile(file);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                    {composerImageFile ? (
+                      <button
+                        type="button"
+                        onClick={() => setComposerImageFile(null)}
+                        className="rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+                      >
+                        Clear Image
+                      </button>
+                    ) : null}
+                  </div>
+                  {composerImageFile ? (
+                    <p className="mt-1 text-xs text-slate-400">Attachment: {composerImageFile.name}</p>
+                  ) : null}
                   <div className="mt-3 flex items-center justify-between">
                     <p className="text-xs text-slate-500">
                       {composerBody.length}/{MAX_ROOM_MESSAGE_LENGTH}
@@ -760,9 +849,15 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                       data-testid="room-send-submit-button"
                       className="rounded-xl border border-neon-400/40 bg-neon-400/10 px-4 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                       type="submit"
-                      disabled={roomExpired || socketStatus !== 'connected' || isMuted}
+                      disabled={
+                        roomExpired ||
+                        socketStatus !== 'connected' ||
+                        isMuted ||
+                        sendingMessage ||
+                        (!composerBody.trim() && !composerImageFile)
+                      }
                     >
-                      Send
+                      {sendingMessage ? 'Sending...' : 'Send'}
                     </button>
                   </div>
                 </form>
@@ -777,10 +872,16 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                     const isBusy = moderationPendingMaskId === member.maskId;
                     return (
                       <div key={member.maskId} className="rounded-xl border border-ink-700 bg-ink-800/80 p-3">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: member.color }} />
-                          <p className="text-sm font-medium text-white">{member.displayName}</p>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <MaskAvatar
+                          displayName={member.displayName}
+                          color={member.color}
+                          avatarUploadId={member.avatarUploadId}
+                          sizeClassName="h-6 w-6"
+                          textClassName="text-[9px]"
+                        />
+                        <p className="text-sm font-medium text-white">{member.displayName}</p>
+                      </div>
                         <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                           {member.role} - {member.avatarSeed}
                         </p>

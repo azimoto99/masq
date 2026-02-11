@@ -8,6 +8,7 @@ import type {
   CreateServerInput,
   CreateServerInviteInput,
   CreateServerMessageInput,
+  CreateUploadInput,
   CreateVoiceParticipantInput,
   CreateVoiceSessionInput,
   CreateMaskInput,
@@ -41,6 +42,7 @@ const serializeFriendUser = (user: {
     displayName: string;
     color: string;
     avatarSeed: string;
+    avatarUploadId: string | null;
   } | null;
 }): FriendUserRecord => ({
   id: user.id,
@@ -51,6 +53,7 @@ const serializeFriendUser = (user: {
         displayName: user.defaultMask.displayName,
         color: user.defaultMask.color,
         avatarSeed: user.defaultMask.avatarSeed,
+        avatarUploadId: user.defaultMask.avatarUploadId,
       }
     : null,
 });
@@ -93,6 +96,7 @@ const serializeServerMember = (membership: {
     displayName: string;
     color: string;
     avatarSeed: string;
+    avatarUploadId: string | null;
     createdAt: Date;
   };
   memberRoles: Array<{
@@ -170,6 +174,16 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
           displayName: input.displayName,
           color: input.color,
           avatarSeed: input.avatarSeed,
+          avatarUploadId: input.avatarUploadId ?? null,
+        },
+      });
+    },
+
+    setMaskAvatarUpload(maskId: string, avatarUploadId: string | null) {
+      return prisma.mask.update({
+        where: { id: maskId },
+        data: {
+          avatarUploadId,
         },
       });
     },
@@ -567,6 +581,7 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
         where: { channelId },
         include: {
           mask: true,
+          imageUpload: true,
         },
         orderBy: {
           createdAt: 'asc',
@@ -580,10 +595,33 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
           channelId: input.channelId,
           maskId: input.maskId,
           body: input.body,
+          imageUploadId: input.imageUploadId ?? null,
         },
         include: {
           mask: true,
+          imageUpload: true,
         },
+      });
+    },
+
+    createUpload(input: CreateUploadInput) {
+      return prisma.upload.create({
+        data: {
+          ownerUserId: input.ownerUserId,
+          kind: input.kind,
+          contextType: input.contextType,
+          contextId: input.contextId,
+          fileName: input.fileName,
+          contentType: input.contentType,
+          sizeBytes: input.sizeBytes,
+          storagePath: input.storagePath,
+        },
+      });
+    },
+
+    findUploadById(uploadId: string) {
+      return prisma.upload.findUnique({
+        where: { id: uploadId },
       });
     },
 
@@ -709,6 +747,7 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
         where: { roomId },
         include: {
           mask: true,
+          imageUpload: true,
         },
         orderBy: {
           createdAt: 'asc',
@@ -722,9 +761,11 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
           roomId: input.roomId,
           maskId: input.maskId,
           body: input.body,
+          imageUploadId: input.imageUploadId ?? null,
         },
         include: {
           mask: true,
+          imageUpload: true,
         },
       });
     },
@@ -995,6 +1036,7 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
         where: { threadId },
         include: {
           mask: true,
+          imageUpload: true,
         },
         orderBy: {
           createdAt: 'asc',
@@ -1008,9 +1050,11 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
           threadId: input.threadId,
           maskId: input.maskId,
           body: input.body,
+          imageUploadId: input.imageUploadId ?? null,
         },
         include: {
           mask: true,
+          imageUpload: true,
         },
       });
     },

@@ -36,6 +36,7 @@ import type {
   CreateServerInput,
   CreateServerInviteInput,
   CreateServerMessageInput,
+  CreateUploadInput,
   CreateVoiceParticipantInput,
   CreateVoiceSessionInput,
   CreateRoomInput,
@@ -62,6 +63,7 @@ import type {
   RoomMembershipRecord,
   RoomModerationRecord,
   RoomRecord,
+  UploadRecord,
   UpsertDmParticipantInput,
   UpsertFriendRequestInput,
   UserRecord,
@@ -108,6 +110,7 @@ class InMemoryRepository implements MasqRepository {
   private dmThreadIdByPair = new Map<string, string>();
   private dmParticipantsByComposite = new Map<string, { threadId: string; userId: string; activeMaskId: string }>();
   private dmMessagesByThread = new Map<string, DmMessageRecord[]>();
+  private uploadsById = new Map<string, UploadRecord>();
   private voiceSessionsById = new Map<string, VoiceSessionRecord>();
   private voiceParticipantsById = new Map<string, VoiceParticipantRecord>();
 
@@ -157,6 +160,14 @@ class InMemoryRepository implements MasqRepository {
       }
     }
     return Array.from(permissions.values());
+  }
+
+  private resolveUpload(uploadId?: string | null): UploadRecord | null {
+    if (!uploadId) {
+      return null;
+    }
+
+    return this.uploadsById.get(uploadId) ?? null;
   }
 
   async pingDb() {
@@ -219,6 +230,7 @@ class InMemoryRepository implements MasqRepository {
       displayName: input.displayName,
       color: input.color,
       avatarSeed: input.avatarSeed,
+      avatarUploadId: input.avatarUploadId ?? null,
       createdAt: new Date(),
     };
 
@@ -227,6 +239,20 @@ class InMemoryRepository implements MasqRepository {
     current.push(mask.id);
     this.maskIdsByUser.set(mask.userId, current);
     return mask;
+  }
+
+  async setMaskAvatarUpload(maskId: string, avatarUploadId: string | null) {
+    const mask = this.masksById.get(maskId);
+    if (!mask) {
+      throw new Error('Mask not found');
+    }
+
+    const updated: MaskRecord = {
+      ...mask,
+      avatarUploadId,
+    };
+    this.masksById.set(maskId, updated);
+    return updated;
   }
 
   async createServer(input: CreateServerInput) {
@@ -683,6 +709,7 @@ class InMemoryRepository implements MasqRepository {
       channelId: input.channelId,
       maskId: input.maskId,
       body: input.body,
+      imageUpload: this.resolveUpload(input.imageUploadId),
       createdAt: new Date(),
       mask,
     };
@@ -690,6 +717,27 @@ class InMemoryRepository implements MasqRepository {
     current.push(message);
     this.serverMessagesByChannel.set(input.channelId, current);
     return message;
+  }
+
+  async createUpload(input: CreateUploadInput) {
+    const upload: UploadRecord = {
+      id: randomUUID(),
+      ownerUserId: input.ownerUserId,
+      kind: input.kind,
+      contextType: input.contextType,
+      contextId: input.contextId,
+      fileName: input.fileName,
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+      storagePath: input.storagePath,
+      createdAt: new Date(),
+    };
+    this.uploadsById.set(upload.id, upload);
+    return upload;
+  }
+
+  async findUploadById(uploadId: string) {
+    return this.uploadsById.get(uploadId) ?? null;
   }
 
   async findMaskByIdForUser(maskId: string, userId: string) {
@@ -874,6 +922,7 @@ class InMemoryRepository implements MasqRepository {
       roomId: input.roomId,
       maskId: input.maskId,
       body: input.body,
+      imageUpload: this.resolveUpload(input.imageUploadId),
       createdAt: new Date(),
       mask,
     };
@@ -933,6 +982,7 @@ class InMemoryRepository implements MasqRepository {
             displayName: defaultMask.displayName,
             color: defaultMask.color,
             avatarSeed: defaultMask.avatarSeed,
+            avatarUploadId: defaultMask.avatarUploadId,
           }
         : null,
     };
@@ -1218,6 +1268,7 @@ class InMemoryRepository implements MasqRepository {
       threadId: input.threadId,
       maskId: input.maskId,
       body: input.body,
+      imageUpload: this.resolveUpload(input.imageUploadId),
       createdAt: new Date(),
       mask,
     };
@@ -2429,6 +2480,116 @@ describe('auth and mask flows', () => {
       },
     });
     expect(modAssignRoleForbidden.statusCode).toBe(403);
+  });
+
+  it('allows ADMIN members to provision roles to other server members', async () => {
+    const ownerCookie = await registerUser(app, 'owner-admin-provision@example.com');
+    const adminCookie = await registerUser(app, 'admin-provision@example.com');
+    const memberCookie = await registerUser(app, 'member-provision@example.com');
+
+    await createMask(app, ownerCookie, 'Owner Provision');
+    const adminMask = await createMask(app, adminCookie, 'Admin Provision');
+    const memberMask = await createMask(app, memberCookie, 'Member Provision');
+
+    const createServerResponse = await app.inject({
+      method: 'POST',
+      url: '/servers',
+      headers: { cookie: ownerCookie },
+      payload: {
+        name: 'Guild Admin Provision',
+      },
+    });
+    expect(createServerResponse.statusCode).toBe(201);
+    const server = CreateServerResponseSchema.parse(createServerResponse.json()).server;
+
+    const inviteResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/invites`,
+      headers: { cookie: ownerCookie },
+      payload: {
+        maxUses: 10,
+      },
+    });
+    expect(inviteResponse.statusCode).toBe(201);
+    const invite = CreateServerInviteResponseSchema.parse(inviteResponse.json()).invite;
+
+    const adminJoinResponse = await app.inject({
+      method: 'POST',
+      url: '/servers/join',
+      headers: { cookie: adminCookie },
+      payload: {
+        inviteCode: invite.code,
+        serverMaskId: adminMask.id,
+      },
+    });
+    expect(adminJoinResponse.statusCode).toBe(200);
+
+    const memberJoinResponse = await app.inject({
+      method: 'POST',
+      url: '/servers/join',
+      headers: { cookie: memberCookie },
+      payload: {
+        inviteCode: invite.code,
+        serverMaskId: memberMask.id,
+      },
+    });
+    expect(memberJoinResponse.statusCode).toBe(200);
+
+    const adminMeResponse = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { cookie: adminCookie },
+    });
+    expect(adminMeResponse.statusCode).toBe(200);
+    const adminUserId = MeResponseSchema.parse(adminMeResponse.json()).user.id;
+
+    const memberMeResponse = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { cookie: memberCookie },
+    });
+    expect(memberMeResponse.statusCode).toBe(200);
+    const memberUserId = MeResponseSchema.parse(memberMeResponse.json()).user.id;
+
+    await repository.addServerMember({
+      serverId: server.id,
+      userId: adminUserId,
+      role: 'ADMIN',
+      serverMaskId: adminMask.id,
+    });
+
+    const createRoleResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/roles`,
+      headers: { cookie: ownerCookie },
+      payload: {
+        name: 'CURATOR',
+        permissions: ['ModerateChat'],
+      },
+    });
+    expect(createRoleResponse.statusCode).toBe(201);
+    const createdRole = ServerRoleResponseSchema.parse(createRoleResponse.json()).role;
+
+    const assignByAdminResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/members/${memberUserId}/roles`,
+      headers: { cookie: adminCookie },
+      payload: {
+        roleIds: [createdRole.id],
+      },
+    });
+    expect(assignByAdminResponse.statusCode).toBe(200);
+    const assignmentPayload = SetServerMemberRolesResponseSchema.parse(assignByAdminResponse.json());
+    expect(assignmentPayload.member.roleIds).toContain(createdRole.id);
+
+    const adminServerStateResponse = await app.inject({
+      method: 'GET',
+      url: `/servers/${server.id}`,
+      headers: { cookie: adminCookie },
+    });
+    expect(adminServerStateResponse.statusCode).toBe(200);
+    const adminServerState = GetServerResponseSchema.parse(adminServerStateResponse.json());
+    expect(adminServerState.myPermissions).toContain('ManageMembers');
   });
 
   it('supports CHANNEL_MASK mode and per-channel mask selection', async () => {

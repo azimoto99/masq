@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo';
+import { SpacesSidebar } from './SpacesSidebar';
 
 interface AuthenticatedShellProps {
   me: MeResponse;
@@ -11,24 +12,6 @@ interface AuthenticatedShellProps {
 }
 
 const ACTIVE_MASK_STORAGE_KEY = 'masq.activeMaskId';
-
-interface NavItem {
-  to: string;
-  label: string;
-  testId?: string;
-}
-
-const utilityItems: readonly NavItem[] = [
-  { to: '/home', label: 'Home' },
-  { to: '/masks', label: 'Masks' },
-];
-
-const switchItems: readonly NavItem[] = [
-  { to: '/servers', label: 'Servers' },
-  { to: '/friends', label: 'Friends' },
-  { to: '/dm', label: 'DMs' },
-  { to: '/rooms', label: 'Rooms', testId: 'open-rooms-button' },
-];
 
 export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShellProps) {
   const location = useLocation();
@@ -48,8 +31,13 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
     }
   };
 
-  const isActive = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`);
+  const showGlobalSpacesSidebar =
+    !location.pathname.startsWith('/servers') &&
+    (location.pathname.startsWith('/friends') ||
+      location.pathname.startsWith('/dm') ||
+      location.pathname.startsWith('/rooms') ||
+      location.pathname.startsWith('/masks') ||
+      location.pathname.startsWith('/home'));
 
   return (
     <div className="mx-auto w-full max-w-[1520px] space-y-4">
@@ -62,43 +50,6 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
             <div>
               <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Masq</p>
               <p className="text-sm text-slate-300">{me.user.email}</p>
-            </div>
-            <nav className="hidden items-center gap-1.5 lg:flex">
-              {utilityItems.map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition ${
-                    isActive(item.to)
-                      ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-neon-100'
-                      : 'border-ink-700 bg-ink-900/75 text-slate-300 hover:border-slate-500 hover:text-white'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          <div className="flex-1 basis-full lg:basis-auto">
-            <div className="rounded-lg border border-ink-700 bg-ink-900/75 px-2 py-1.5">
-              <p className="mb-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">Switch</p>
-              <nav className="flex flex-wrap items-center gap-1.5">
-                {switchItems.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    data-testid={item.testId}
-                    className={`rounded-md border px-2.5 py-1 text-xs uppercase tracking-[0.12em] transition ${
-                      isActive(item.to)
-                        ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-neon-100'
-                        : 'border-ink-700 bg-ink-900/75 text-slate-300 hover:border-slate-500 hover:text-white'
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
             </div>
           </div>
 
@@ -113,6 +64,12 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
                 {activeMask?.displayName ?? 'none'}
               </p>
             </div>
+            <Link
+              to="/masks"
+              className="rounded-md border border-ink-700 px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+            >
+              Masks
+            </Link>
             <button
               type="button"
               onClick={() => {
@@ -126,7 +83,14 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
           </div>
         </div>
       </header>
-      {children}
+      {showGlobalSpacesSidebar ? (
+        <div className="grid gap-4 lg:grid-cols-[280px,1fr]">
+          <SpacesSidebar className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)] lg:overflow-hidden" />
+          <div>{children}</div>
+        </div>
+      ) : (
+        children
+      )}
     </div>
   );
 }

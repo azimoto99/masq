@@ -10,8 +10,9 @@ import {
 } from '@masq/shared';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ApiError, getDmThread, listDmThreads, setDmMask } from '../lib/api';
+import { ApiError, buildUploadUrl, getDmThread, listDmThreads, setDmMask, uploadImage } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
+import { MaskAvatar } from '../components/MaskAvatar';
 import { RTCPanel } from '../components/RTCPanel';
 
 interface DmPageProps {
@@ -62,6 +63,8 @@ export function DmPage({ me }: DmPageProps) {
   const [socketError, setSocketError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [composerBody, setComposerBody] = useState('');
+  const [composerImageFile, setComposerImageFile] = useState<File | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [savingMask, setSavingMask] = useState(false);
 
   const activeMask = useMemo(
@@ -218,27 +221,49 @@ export function DmPage({ me }: DmPageProps) {
     navigate(`/dm/${threadId}`);
   };
 
-  const onSendMessage = (event: FormEvent<HTMLFormElement>) => {
+  const onSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
       setSocketError('Socket is not connected');
       return;
     }
 
-    if (!selectedThreadId || !activeMaskId || !composerBody.trim()) {
+    if (!selectedThreadId || !activeMaskId || (!composerBody.trim() && !composerImageFile)) {
       return;
     }
 
-    const sendEvent = ClientSocketEventSchema.parse({
-      type: 'SEND_DM',
-      data: {
-        threadId: selectedThreadId,
-        maskId: activeMaskId,
-        body: composerBody,
-      },
-    });
-    socketRef.current.send(JSON.stringify(sendEvent));
-    setComposerBody('');
+    setSendingMessage(true);
+    setSocketError(null);
+    try {
+      let imageUploadId: string | undefined;
+      if (composerImageFile) {
+        const upload = await uploadImage(
+          {
+            contextType: 'DM_THREAD',
+            contextId: selectedThreadId,
+          },
+          composerImageFile,
+        );
+        imageUploadId = upload.upload.id;
+      }
+
+      const sendEvent = ClientSocketEventSchema.parse({
+        type: 'SEND_DM',
+        data: {
+          threadId: selectedThreadId,
+          maskId: activeMaskId,
+          body: composerBody,
+          imageUploadId,
+        },
+      });
+      socketRef.current.send(JSON.stringify(sendEvent));
+      setComposerBody('');
+      setComposerImageFile(null);
+    } catch (err) {
+      setSocketError(err instanceof ApiError ? err.message : 'Failed to send message');
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   const onSwitchMask = async (nextMaskId: string) => {
@@ -338,7 +363,9 @@ export function DmPage({ me }: DmPageProps) {
               >
                 <div className="font-medium">{item.peer.defaultMask?.displayName ?? item.peer.email}</div>
                 <div className="mt-1 truncate text-[10px] text-slate-500">
-                  {item.lastMessage ? item.lastMessage.body : 'No messages yet'}
+                  {item.lastMessage
+                    ? item.lastMessage.body || (item.lastMessage.image ? '[image]' : 'No text')
+                    : 'No messages yet'}
                 </div>
               </button>
             ))}
@@ -413,14 +440,37 @@ export function DmPage({ me }: DmPageProps) {
                     {messages.map((message) => (
                       <article key={message.id} className="rounded-xl border border-ink-700 bg-ink-800/60 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: message.mask.color }} />
+                        <div className="flex items-center gap-2 text-sm">
+                            <MaskAvatar
+                              displayName={message.mask.displayName}
+                              color={message.mask.color}
+                              avatarUploadId={message.mask.avatarUploadId}
+                              sizeClassName="h-6 w-6"
+                              textClassName="text-[9px]"
+                            />
                             <span className="font-medium text-white">{message.mask.displayName}</span>
                             <span className="text-xs text-slate-500">{message.mask.avatarSeed}</span>
                           </div>
                           <span className="text-xs text-slate-500">{formatTimestamp(message.createdAt)}</span>
                         </div>
-                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                        {message.body ? (
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                        ) : null}
+                        {message.image ? (
+                          <a
+                            className="mt-2 block max-w-sm overflow-hidden rounded-lg border border-ink-700 bg-ink-900/70"
+                            href={buildUploadUrl(message.image.id)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <img
+                              src={buildUploadUrl(message.image.id)}
+                              alt={message.image.fileName}
+                              className="max-h-80 w-full object-contain"
+                              loading="lazy"
+                            />
+                          </a>
+                        ) : null}
                       </article>
                     ))}
                   </div>
@@ -434,8 +484,36 @@ export function DmPage({ me }: DmPageProps) {
                     onChange={(event) => setComposerBody(event.target.value)}
                     placeholder="Speak through your mask"
                     maxLength={MAX_ROOM_MESSAGE_LENGTH}
-                    disabled={socketStatus !== 'connected'}
+                    disabled={socketStatus !== 'connected' || sendingMessage}
                   />
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <label className="cursor-pointer rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-neon-400 hover:text-neon-100">
+                      Attach Image
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        disabled={socketStatus !== 'connected' || sendingMessage}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          setComposerImageFile(file);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                    {composerImageFile ? (
+                      <button
+                        type="button"
+                        onClick={() => setComposerImageFile(null)}
+                        className="rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+                      >
+                        Clear Image
+                      </button>
+                    ) : null}
+                  </div>
+                  {composerImageFile ? (
+                    <p className="mt-1 text-xs text-slate-400">Attachment: {composerImageFile.name}</p>
+                  ) : null}
                   <div className="mt-3 flex items-center justify-between">
                     <p className="text-xs text-slate-500">
                       {composerBody.length}/{MAX_ROOM_MESSAGE_LENGTH}
@@ -443,9 +521,13 @@ export function DmPage({ me }: DmPageProps) {
                     <button
                       type="submit"
                       className="rounded-xl border border-neon-400/40 bg-neon-400/10 px-4 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={socketStatus !== 'connected'}
+                      disabled={
+                        socketStatus !== 'connected' ||
+                        sendingMessage ||
+                        (!composerBody.trim() && !composerImageFile)
+                      }
                     >
-                      Send
+                      {sendingMessage ? 'Sending...' : 'Send'}
                     </button>
                   </div>
                 </form>
@@ -458,7 +540,13 @@ export function DmPage({ me }: DmPageProps) {
                   {participants.map((participant) => (
                     <div key={participant.userId} className="rounded-xl border border-ink-700 bg-ink-800/80 p-3">
                       <div className="flex items-center gap-2">
-                        <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: participant.mask.color }} />
+                        <MaskAvatar
+                          displayName={participant.mask.displayName}
+                          color={participant.mask.color}
+                          avatarUploadId={participant.mask.avatarUploadId}
+                          sizeClassName="h-6 w-6"
+                          textClassName="text-[9px]"
+                        />
                         <p className="text-sm font-medium text-white">{participant.mask.displayName}</p>
                       </div>
                       <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">{participant.mask.avatarSeed}</p>

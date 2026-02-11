@@ -18,6 +18,15 @@ export const MAX_INVITE_USES = 100_000;
 export const MAX_SERVER_ROLE_NAME_LENGTH = 40;
 export const MAX_SERVER_ROLE_ASSIGNMENTS = 24;
 export const MAX_RTC_PARTICIPANT_DISPLAY_NAME_LENGTH = 40;
+export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_IMAGE_FILENAME_LENGTH = 180;
+
+export const ALLOWED_IMAGE_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+] as const;
 
 export const RoomKindSchema = z.enum(['EPHEMERAL', 'RITUAL', 'NARRATIVE']);
 export type RoomKind = z.infer<typeof RoomKindSchema>;
@@ -39,6 +48,12 @@ export type ChannelIdentityMode = z.infer<typeof ChannelIdentityModeSchema>;
 
 export const RtcContextTypeSchema = z.enum(['SERVER_CHANNEL', 'DM_THREAD', 'EPHEMERAL_ROOM']);
 export type RtcContextType = z.infer<typeof RtcContextTypeSchema>;
+
+export const UploadKindSchema = z.enum(['MESSAGE_IMAGE', 'MASK_AVATAR']);
+export type UploadKind = z.infer<typeof UploadKindSchema>;
+
+export const UploadContextTypeSchema = z.enum(['SERVER_CHANNEL', 'DM_THREAD', 'EPHEMERAL_ROOM']);
+export type UploadContextType = z.infer<typeof UploadContextTypeSchema>;
 
 export const ServerPermissionSchema = z.enum([
   'ManageChannels',
@@ -74,6 +89,7 @@ export const MaskSchema = z.object({
   displayName: z.string().min(1).max(40),
   color: z.string().min(1).max(32),
   avatarSeed: z.string().min(1).max(80),
+  avatarUploadId: z.string().uuid().nullable().optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -99,7 +115,8 @@ export const MessageSchema = z.object({
   id: z.string().uuid(),
   roomId: z.string().uuid(),
   maskId: z.string().uuid(),
-  body: z.string().min(1).max(MAX_ROOM_MESSAGE_LENGTH),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH),
+  imageUploadId: z.string().uuid().nullable().optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -121,6 +138,7 @@ export const DefaultMaskSummarySchema = z.object({
   displayName: z.string().min(1).max(40),
   color: z.string().min(1).max(32),
   avatarSeed: z.string().min(1).max(80),
+  avatarUploadId: z.string().uuid().nullable().optional(),
 });
 
 export const FriendUserSchema = z.object({
@@ -488,11 +506,53 @@ export const ModerateRoomResponseSchema = z.object({
   room: RoomSchema.optional(),
 });
 
+export const ImageAttachmentSchema = z.object({
+  id: z.string().uuid(),
+  fileName: z.string().min(1).max(MAX_IMAGE_FILENAME_LENGTH),
+  contentType: z.enum(ALLOWED_IMAGE_CONTENT_TYPES),
+  sizeBytes: z.number().int().min(1).max(MAX_IMAGE_UPLOAD_BYTES),
+});
+
+export const UploadImageRequestSchema = z.object({
+  contextType: UploadContextTypeSchema,
+  contextId: z.string().uuid(),
+});
+
+export const UploadedImageSchema = z.object({
+  id: z.string().uuid(),
+  ownerUserId: z.string().uuid(),
+  kind: UploadKindSchema,
+  contextType: UploadContextTypeSchema.nullable(),
+  contextId: z.string().uuid().nullable(),
+  fileName: z.string().min(1).max(MAX_IMAGE_FILENAME_LENGTH),
+  contentType: z.enum(ALLOWED_IMAGE_CONTENT_TYPES),
+  sizeBytes: z.number().int().min(1).max(MAX_IMAGE_UPLOAD_BYTES),
+  createdAt: z.string().datetime(),
+});
+
+export const UploadImageResponseSchema = z.object({
+  upload: UploadedImageSchema,
+});
+
+export const UploadParamsSchema = z.object({
+  uploadId: z.string().uuid(),
+});
+
+export const SetMaskAvatarParamsSchema = z.object({
+  maskId: z.string().uuid(),
+});
+
+export const SetMaskAvatarResponseSchema = z.object({
+  success: z.literal(true),
+  mask: MaskSchema,
+});
+
 export const SocketMaskIdentitySchema = z.object({
   maskId: z.string().uuid(),
   displayName: z.string().min(1).max(40),
   avatarSeed: z.string().min(1).max(80),
   color: z.string().min(1).max(32),
+  avatarUploadId: z.string().uuid().nullable().optional(),
 });
 
 export const RoomMemberStateSchema = SocketMaskIdentitySchema.extend({
@@ -508,7 +568,8 @@ export const ServerChannelMemberStateSchema = z.object({
 export const RoomMessageSchema = z.object({
   id: z.string().uuid(),
   roomId: z.string().uuid(),
-  body: z.string().min(1).max(MAX_ROOM_MESSAGE_LENGTH),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH),
+  image: ImageAttachmentSchema.nullable().optional(),
   createdAt: z.string().datetime(),
   mask: SocketMaskIdentitySchema,
 });
@@ -516,7 +577,8 @@ export const RoomMessageSchema = z.object({
 export const ChannelMessageSchema = z.object({
   id: z.string().uuid(),
   channelId: z.string().uuid(),
-  body: z.string().min(1).max(MAX_ROOM_MESSAGE_LENGTH),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH),
+  image: ImageAttachmentSchema.nullable().optional(),
   createdAt: z.string().datetime(),
   mask: SocketMaskIdentitySchema,
 });
@@ -536,7 +598,8 @@ export const DmParticipantStateSchema = z.object({
 export const DmMessageSchema = z.object({
   id: z.string().uuid(),
   threadId: z.string().uuid(),
-  body: z.string().min(1).max(MAX_ROOM_MESSAGE_LENGTH),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH),
+  image: ImageAttachmentSchema.nullable().optional(),
   createdAt: z.string().datetime(),
   mask: SocketMaskIdentitySchema,
 });
@@ -645,7 +708,11 @@ export const JoinRoomSocketPayloadSchema = z.object({
 export const SendMessageSocketPayloadSchema = z.object({
   roomId: z.string().uuid(),
   maskId: z.string().uuid(),
-  body: z.string().min(1).max(MAX_ROOM_MESSAGE_LENGTH),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH).default(''),
+  imageUploadId: z.string().uuid().optional(),
+}).refine((value) => value.body.trim().length > 0 || Boolean(value.imageUploadId), {
+  message: 'Message body or imageUploadId is required',
+  path: ['body'],
 });
 
 export const JoinDmSocketPayloadSchema = z.object({
@@ -656,7 +723,11 @@ export const JoinDmSocketPayloadSchema = z.object({
 export const SendDmSocketPayloadSchema = z.object({
   threadId: z.string().uuid(),
   maskId: z.string().uuid(),
-  body: z.string().min(1).max(MAX_ROOM_MESSAGE_LENGTH),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH).default(''),
+  imageUploadId: z.string().uuid().optional(),
+}).refine((value) => value.body.trim().length > 0 || Boolean(value.imageUploadId), {
+  message: 'Message body or imageUploadId is required',
+  path: ['body'],
 });
 
 export const JoinChannelSocketPayloadSchema = z.object({
@@ -665,7 +736,11 @@ export const JoinChannelSocketPayloadSchema = z.object({
 
 export const SendChannelMessageSocketPayloadSchema = z.object({
   channelId: z.string().uuid(),
-  body: z.string().min(1).max(MAX_ROOM_MESSAGE_LENGTH),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH).default(''),
+  imageUploadId: z.string().uuid().optional(),
+}).refine((value) => value.body.trim().length > 0 || Boolean(value.imageUploadId), {
+  message: 'Message body or imageUploadId is required',
+  path: ['body'],
 });
 
 export const ClientSocketEventSchema = z.discriminatedUnion('type', [
@@ -894,6 +969,8 @@ export type SetChannelMaskRequest = z.infer<typeof SetChannelMaskRequestSchema>;
 export type SetChannelMaskResponse = z.infer<typeof SetChannelMaskResponseSchema>;
 export type CreateMaskRequest = z.infer<typeof CreateMaskRequestSchema>;
 export type CreateMaskResponse = z.infer<typeof CreateMaskResponseSchema>;
+export type SetMaskAvatarParams = z.infer<typeof SetMaskAvatarParamsSchema>;
+export type SetMaskAvatarResponse = z.infer<typeof SetMaskAvatarResponseSchema>;
 export type DeleteMaskParams = z.infer<typeof DeleteMaskParamsSchema>;
 export type DeleteMaskResponse = z.infer<typeof DeleteMaskResponseSchema>;
 export type ListRoomsQuery = z.infer<typeof ListRoomsQuerySchema>;
@@ -910,6 +987,11 @@ export type MuteRoomMemberRequest = z.infer<typeof MuteRoomMemberRequestSchema>;
 export type ExileRoomMemberRequest = z.infer<typeof ExileRoomMemberRequestSchema>;
 export type LockRoomRequest = z.infer<typeof LockRoomRequestSchema>;
 export type ModerateRoomResponse = z.infer<typeof ModerateRoomResponseSchema>;
+export type ImageAttachment = z.infer<typeof ImageAttachmentSchema>;
+export type UploadImageRequest = z.infer<typeof UploadImageRequestSchema>;
+export type UploadedImage = z.infer<typeof UploadedImageSchema>;
+export type UploadImageResponse = z.infer<typeof UploadImageResponseSchema>;
+export type UploadParams = z.infer<typeof UploadParamsSchema>;
 export type SocketMaskIdentity = z.infer<typeof SocketMaskIdentitySchema>;
 export type RoomMemberState = z.infer<typeof RoomMemberStateSchema>;
 export type RoomMessage = z.infer<typeof RoomMessageSchema>;

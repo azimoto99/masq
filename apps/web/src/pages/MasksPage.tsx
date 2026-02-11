@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { MAX_MASKS_PER_USER, type MeResponse } from '@masq/shared';
-import { ApiError, createMask, deleteMask } from '../lib/api';
+import { ApiError, createMask, deleteMask, setMaskAvatar } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
+import { MaskAvatar } from '../components/MaskAvatar';
 
 interface MasksPageProps {
   me: MeResponse;
@@ -19,6 +20,7 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
   const [color, setColor] = useState('#8ff5ff');
   const [avatarSeed, setAvatarSeed] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [avatarUploadingMaskId, setAvatarUploadingMaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const activeMask = useMemo(
@@ -84,6 +86,24 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
     }
   };
 
+  const handleAvatarUpload = async (maskId: string, fileList: FileList | null) => {
+    const file = fileList?.[0];
+    if (!file) {
+      return;
+    }
+
+    setAvatarUploadingMaskId(maskId);
+    setError(null);
+    try {
+      await setMaskAvatar(maskId, file);
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to upload avatar');
+    } finally {
+      setAvatarUploadingMaskId(null);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <header className="flex flex-col gap-4 rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40 md:flex-row md:items-center md:justify-between">
@@ -128,9 +148,12 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div
-                        className="h-10 w-10 rounded-full border border-white/20"
-                        style={{ backgroundColor: mask.color }}
+                      <MaskAvatar
+                        displayName={mask.displayName}
+                        color={mask.color}
+                        avatarUploadId={mask.avatarUploadId}
+                        sizeClassName="h-10 w-10"
+                        textClassName="text-xs"
                       />
                       <div>
                         <p className="text-lg font-medium text-white">{mask.displayName}</p>
@@ -146,6 +169,19 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
                       >
                         {selected ? 'Selected' : 'Select'}
                       </button>
+                      <label className="cursor-pointer rounded-lg border border-ink-600 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-neon-400 hover:text-neon-400">
+                        {avatarUploadingMaskId === mask.id ? 'Uploading...' : 'Avatar'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          className="hidden"
+                          disabled={avatarUploadingMaskId === mask.id}
+                          onChange={(event) => {
+                            void handleAvatarUpload(mask.id, event.target.files);
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
                       <button
                         type="button"
                         onClick={() => void handleDeleteMask(mask.id)}

@@ -45,6 +45,8 @@ const RawEnvSchema = z.object({
   LIVEKIT_API_SECRET: z.string().min(1).optional(),
   TRUST_PROXY: BooleanFromEnvSchema.default(false),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  UPLOADS_DIR: z.string().default('./uploads'),
+  MAX_IMAGE_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
 });
 
 const parsed = RawEnvSchema.safeParse(process.env);

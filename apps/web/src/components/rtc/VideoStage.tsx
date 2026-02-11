@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { MediaTrack } from './MediaTrack';
 import type { RtcParticipantView } from './types';
 
@@ -9,25 +10,63 @@ interface VideoStageProps {
   onMuteParticipant: (maskId: string) => void;
 }
 
+type TileMode = 'camera' | 'screen' | 'none';
+
+interface LabeledParticipant {
+  participant: RtcParticipantView;
+  displayName: string;
+}
+
+const getTileMode = (participant: RtcParticipantView): TileMode => {
+  if (participant.screenTrack) {
+    return 'screen';
+  }
+
+  if (participant.cameraTrack) {
+    return 'camera';
+  }
+
+  return 'none';
+};
+
+const toCameraFocusKey = (identity: string) => `camera:${identity}`;
+const toScreenFocusKey = (identity: string) => `screen:${identity}`;
+
 const SpeakerTile = ({
-  participant,
+  entry,
+  focusKey,
   deafened,
   canModerate,
   onMuteParticipant,
+  onToggleFocus,
 }: {
-  participant: RtcParticipantView;
+  entry: LabeledParticipant;
+  focusKey: string | null;
   deafened: boolean;
   canModerate: boolean;
   onMuteParticipant: (maskId: string) => void;
+  onToggleFocus: (nextFocusKey: string | null) => void;
 }) => {
+  const { participant, displayName } = entry;
   const mask = participant.metadata;
-  const displayName = mask?.displayName ?? (participant.isLocal ? 'You' : participant.identity);
   const color = mask?.color ?? '#78e6da';
   const maskId = mask?.maskId ?? '';
+  const tileMode = getTileMode(participant);
+  const tileFocusKey =
+    tileMode === 'camera'
+      ? toCameraFocusKey(participant.identity)
+      : tileMode === 'screen'
+        ? toScreenFocusKey(participant.identity)
+        : null;
+  const isFocused = Boolean(tileFocusKey && focusKey === tileFocusKey);
 
   return (
     <article className="rounded-xl border border-ink-700 bg-ink-900/80 p-2">
-      <div className="relative h-28 overflow-hidden rounded-md border border-ink-700 bg-ink-800">
+      <div
+        className={`relative overflow-hidden rounded-md border border-ink-700 bg-ink-800 ${
+          tileMode === 'screen' ? 'aspect-video' : 'aspect-[4/3]'
+        }`}
+      >
         {participant.screenTrack ? (
           <MediaTrack track={participant.screenTrack} kind="video" muted={participant.isLocal || deafened} />
         ) : participant.cameraTrack ? (
@@ -38,13 +77,27 @@ const SpeakerTile = ({
           </div>
         )}
 
-        {participant.audioTrack ? (
-          <MediaTrack track={participant.audioTrack} kind="audio" muted={participant.isLocal || deafened} />
+        {participant.audioTrack && !participant.isLocal ? (
+          <MediaTrack track={participant.audioTrack} kind="audio" muted={deafened} />
         ) : null}
 
         <div className="absolute left-1.5 top-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] text-white">
           {participant.isSpeaking ? 'Speaking' : 'Idle'}
         </div>
+
+        {tileFocusKey ? (
+          <button
+            type="button"
+            onClick={() => onToggleFocus(tileFocusKey)}
+            className={`absolute right-1.5 top-1.5 rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] transition ${
+              isFocused
+                ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-100'
+                : 'border-white/25 bg-black/65 text-slate-200 hover:border-cyan-300/60 hover:text-white'
+            }`}
+          >
+            {isFocused ? 'Restore' : 'Maximize'}
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-1.5 flex items-center justify-between gap-2">
@@ -78,72 +131,247 @@ export function VideoStage({
   canModerate,
   onMuteParticipant,
 }: VideoStageProps) {
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+
+  const labeledParticipants = useMemo<LabeledParticipant[]>(
+    () =>
+      participants.map((participant, index) => ({
+        participant,
+        displayName: participant.metadata?.displayName ?? (participant.isLocal ? 'You' : `Participant ${index + 1}`),
+      })),
+    [participants],
+  );
+
+  const activeScreenIdentity = activeScreenShare?.identity ?? null;
+
+  const focusedMedia = useMemo(() => {
+    if (!focusKey) {
+      return null;
+    }
+
+    const separatorIndex = focusKey.indexOf(':');
+    if (separatorIndex <= 0) {
+      return null;
+    }
+
+    const kind = focusKey.slice(0, separatorIndex);
+    const identity = focusKey.slice(separatorIndex + 1);
+    if (!identity || (kind !== 'camera' && kind !== 'screen')) {
+      return null;
+    }
+
+    const matched = labeledParticipants.find((entry) => entry.participant.identity === identity);
+    if (!matched) {
+      return null;
+    }
+
+    if (kind === 'camera' && !matched.participant.cameraTrack) {
+      return null;
+    }
+
+    if (kind === 'screen' && !matched.participant.screenTrack) {
+      return null;
+    }
+
+    return {
+      kind: kind as 'camera' | 'screen',
+      entry: matched,
+    };
+  }, [focusKey, labeledParticipants]);
+
+  useEffect(() => {
+    if (focusKey && !focusedMedia) {
+      setFocusKey(null);
+    }
+  }, [focusKey, focusedMedia]);
+
+  const onToggleFocus = (nextFocusKey: string | null) => {
+    setFocusKey((current) => (current === nextFocusKey ? null : nextFocusKey));
+  };
+
+  const focusedParticipant = focusedMedia?.entry.participant ?? null;
+  const focusedDisplayName = focusedMedia?.entry.displayName ?? null;
+  const focusedColor = focusedParticipant?.metadata?.color ?? '#78e6da';
+
+  const sideParticipants = labeledParticipants.filter((entry) => {
+    if (!activeScreenIdentity) {
+      return true;
+    }
+
+    return entry.participant.identity !== activeScreenIdentity;
+  });
+
+  const screenShareEntry = activeScreenIdentity
+    ? labeledParticipants.find((entry) => entry.participant.identity === activeScreenIdentity) ?? null
+    : null;
+  const activeScreenFocusKey = activeScreenIdentity ? toScreenFocusKey(activeScreenIdentity) : null;
+
   if (participants.length === 0) {
     return null;
   }
 
   if (activeScreenShare) {
-    const sideParticipants = participants.filter((item) => item.identity !== activeScreenShare.identity);
-
     return (
-      <section className="grid gap-2 rounded-xl border border-ink-700 bg-ink-800/70 p-2 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="rounded-xl border border-ink-700 bg-ink-900/80 p-2">
-          <div className="mb-1.5 flex items-center justify-between">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-200">Screen Share</p>
-            <span className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] text-cyan-100">
-              Live
-            </span>
-          </div>
-          <div className="relative h-[260px] overflow-hidden rounded-lg border border-ink-700 bg-ink-800">
-            {activeScreenShare.screenTrack ? (
+      <section className="space-y-2">
+        {focusedMedia && focusedParticipant ? (
+          <div className="rounded-xl border border-cyan-400/35 bg-ink-900/80 p-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: focusedColor }} />
+                <p className="text-xs font-medium text-cyan-100">
+                  {focusedDisplayName} {focusedMedia.kind === 'screen' ? '- screen share' : '- camera'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFocusKey(null)}
+                className="rounded-md border border-cyan-400/45 bg-cyan-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300"
+              >
+                Exit Maximize
+              </button>
+            </div>
+            <div
+              className={`relative overflow-hidden rounded-lg border border-ink-700 bg-ink-800 ${
+                focusedMedia.kind === 'screen' ? 'aspect-video' : 'aspect-[4/3]'
+              }`}
+            >
               <MediaTrack
-                track={activeScreenShare.screenTrack}
+                track={focusedMedia.kind === 'screen' ? focusedParticipant.screenTrack : focusedParticipant.cameraTrack}
                 kind="video"
-                muted={activeScreenShare.isLocal || deafened}
+                muted={focusedParticipant.isLocal || deafened}
               />
-            ) : null}
-            {activeScreenShare.audioTrack ? (
-              <MediaTrack
-                track={activeScreenShare.audioTrack}
-                kind="audio"
-                muted={activeScreenShare.isLocal || deafened}
-              />
-            ) : null}
+              {focusedParticipant.audioTrack && !focusedParticipant.isLocal ? (
+                <MediaTrack
+                  track={focusedParticipant.audioTrack}
+                  kind="audio"
+                  muted={deafened}
+                />
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        <div className="space-y-2">
-          {sideParticipants.length === 0 ? (
-            <p className="rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1.5 text-xs text-slate-500">
-              No other participants.
-            </p>
-          ) : (
-            sideParticipants.map((participant) => (
-              <SpeakerTile
-                key={participant.identity}
-                participant={participant}
-                deafened={deafened}
-                canModerate={canModerate}
-                onMuteParticipant={onMuteParticipant}
-              />
-            ))
-          )}
+        <div className="grid gap-2 rounded-xl border border-ink-700 bg-ink-800/70 p-2 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="rounded-xl border border-ink-700 bg-ink-900/80 p-2">
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-200">Screen Share</p>
+              <div className="flex items-center gap-1.5">
+                <span className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] text-cyan-100">
+                  Live
+                </span>
+                {activeScreenFocusKey ? (
+                  <button
+                    type="button"
+                    onClick={() => onToggleFocus(activeScreenFocusKey)}
+                    className={`rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] transition ${
+                      focusKey === activeScreenFocusKey
+                        ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-100'
+                        : 'border-ink-600 bg-ink-900 text-slate-200 hover:border-cyan-300/60 hover:text-white'
+                    }`}
+                  >
+                    {focusKey === activeScreenFocusKey ? 'Restore' : 'Maximize'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="relative aspect-video overflow-hidden rounded-lg border border-ink-700 bg-ink-800">
+              {activeScreenShare.screenTrack ? (
+                <MediaTrack
+                  track={activeScreenShare.screenTrack}
+                  kind="video"
+                  muted={activeScreenShare.isLocal || deafened}
+                />
+              ) : null}
+              {activeScreenShare.audioTrack && !activeScreenShare.isLocal ? (
+                <MediaTrack
+                  track={activeScreenShare.audioTrack}
+                  kind="audio"
+                  muted={deafened}
+                />
+              ) : null}
+              <div className="absolute left-1.5 top-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] text-white">
+                {screenShareEntry?.displayName ?? 'Screen Share'}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {sideParticipants.length === 0 ? (
+              <p className="rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1.5 text-xs text-slate-500">
+                No other participants.
+              </p>
+            ) : (
+              sideParticipants.map((entry) => (
+                <SpeakerTile
+                  key={entry.participant.identity}
+                  entry={entry}
+                  focusKey={focusKey}
+                  deafened={deafened}
+                  canModerate={canModerate}
+                  onMuteParticipant={onMuteParticipant}
+                  onToggleFocus={onToggleFocus}
+                />
+              ))
+            )}
+          </div>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="grid gap-2 rounded-xl border border-ink-700 bg-ink-800/70 p-2 sm:grid-cols-2 xl:grid-cols-3">
-      {participants.map((participant) => (
-        <SpeakerTile
-          key={participant.identity}
-          participant={participant}
-          deafened={deafened}
-          canModerate={canModerate}
-          onMuteParticipant={onMuteParticipant}
-        />
-      ))}
+    <section className="space-y-2">
+      {focusedMedia && focusedParticipant ? (
+        <div className="rounded-xl border border-cyan-400/35 bg-ink-900/80 p-2">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: focusedColor }} />
+              <p className="text-xs font-medium text-cyan-100">
+                {focusedDisplayName} {focusedMedia.kind === 'screen' ? '- screen share' : '- camera'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFocusKey(null)}
+              className="rounded-md border border-cyan-400/45 bg-cyan-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300"
+            >
+              Exit Maximize
+            </button>
+          </div>
+          <div
+            className={`relative overflow-hidden rounded-lg border border-ink-700 bg-ink-800 ${
+              focusedMedia.kind === 'screen' ? 'aspect-video' : 'aspect-[4/3]'
+            }`}
+          >
+            <MediaTrack
+              track={focusedMedia.kind === 'screen' ? focusedParticipant.screenTrack : focusedParticipant.cameraTrack}
+              kind="video"
+              muted={focusedParticipant.isLocal || deafened}
+            />
+            {focusedParticipant.audioTrack && !focusedParticipant.isLocal ? (
+              <MediaTrack
+                track={focusedParticipant.audioTrack}
+                kind="audio"
+                muted={deafened}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <section className="grid gap-2 rounded-xl border border-ink-700 bg-ink-800/70 p-2 sm:grid-cols-2 xl:grid-cols-3">
+        {labeledParticipants.map((entry) => (
+          <SpeakerTile
+            key={entry.participant.identity}
+            entry={entry}
+            focusKey={focusKey}
+            deafened={deafened}
+            canModerate={canModerate}
+            onMuteParticipant={onMuteParticipant}
+            onToggleFocus={onToggleFocus}
+          />
+        ))}
+      </section>
     </section>
   );
 }

@@ -18,10 +18,29 @@ export function MediaTrack({ track, kind, muted = false, className }: MediaTrack
     }
 
     track.attach(element);
+    if (kind === 'audio') {
+      const audioElement = element as HTMLAudioElement;
+      audioElement.muted = muted;
+      audioElement.volume = muted ? 0 : 1;
+    }
     return () => {
       track.detach(element);
     };
-  }, [track]);
+  }, [kind, muted, track]);
+
+  useEffect(() => {
+    if (kind !== 'audio') {
+      return;
+    }
+
+    const element = elementRef.current as HTMLAudioElement | null;
+    if (!element) {
+      return;
+    }
+
+    element.muted = muted;
+    element.volume = muted ? 0 : 1;
+  }, [kind, muted]);
 
   if (kind === 'video') {
     return (
@@ -35,5 +54,12 @@ export function MediaTrack({ track, kind, muted = false, className }: MediaTrack
     );
   }
 
-  return <audio ref={elementRef as RefObject<HTMLAudioElement>} autoPlay muted={muted} className={className} />;
+  return (
+    <audio
+      ref={elementRef as RefObject<HTMLAudioElement>}
+      autoPlay
+      muted={muted}
+      className={className}
+    />
+  );
 }

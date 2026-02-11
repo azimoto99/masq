@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import Fastify, {
   type FastifyInstance,
   type FastifyReply,
@@ -9,6 +12,7 @@ import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
+import multipart, { type MultipartFile } from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import argon2 from 'argon2';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
@@ -16,12 +20,15 @@ import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import {
   ALL_SERVER_PERMISSIONS,
+  ALLOWED_IMAGE_CONTENT_TYPES,
   AuthResponseSchema,
   ClientSocketEventSchema,
   CreateServerRequestSchema,
   CreateServerResponseSchema,
   CreateMaskRequestSchema,
   CreateMaskResponseSchema,
+  SetMaskAvatarParamsSchema,
+  SetMaskAvatarResponseSchema,
   CreateFriendRequestRequestSchema,
   CreateFriendRequestResponseSchema,
   CreateServerChannelRequestSchema,
@@ -53,6 +60,10 @@ import {
   FriendsListResponseSchema,
   FriendUserParamsSchema,
   HealthResponseSchema,
+  UploadImageRequestSchema,
+  UploadImageResponseSchema,
+  UploadParamsSchema,
+  MAX_IMAGE_FILENAME_LENGTH,
   GetServerResponseSchema,
   JoinServerRequestSchema,
   JoinServerResponseSchema,
@@ -100,8 +111,14 @@ import {
   UpdateServerSettingsResponseSchema,
   UpdateServerRoleRequestSchema,
   type RtcContextType,
+  type UploadContextType,
+  type UploadKind,
   type Channel,
+  type ChannelMessage,
+  type DmMessage,
+  type ImageAttachment,
   type MembershipRole,
+  type RoomMessage,
   type ServerPermission,
   type ServerChannelMemberState,
   type Room,
@@ -136,6 +153,7 @@ import type {
   UserRecord,
   VoiceParticipantRecord,
   VoiceSessionRecord,
+  UploadRecord,
 } from './domain/repository.js';
 
 interface BuildAppOptions {
@@ -160,6 +178,14 @@ interface SocketSession {
 }
 
 const DEFAULT_MASK_COLOR = '#8ff5ff';
+const IMAGE_CONTENT_TYPES = new Set(ALLOWED_IMAGE_CONTENT_TYPES);
+type AllowedImageContentType = (typeof ALLOWED_IMAGE_CONTENT_TYPES)[number];
+const IMAGE_CONTENT_TYPE_EXTENSION_MAP: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
 const MESSAGE_RATE_LIMIT_WINDOW_MS = 4000;
 const MESSAGE_RATE_LIMIT_COUNT = 8;
 const DM_MESSAGE_RATE_LIMIT_WINDOW_MS = 4000;
@@ -167,6 +193,7 @@ const DM_MESSAGE_RATE_LIMIT_COUNT = 10;
 const CHANNEL_MESSAGE_RATE_LIMIT_WINDOW_MS = 4000;
 const CHANNEL_MESSAGE_RATE_LIMIT_COUNT = 10;
 const WS_OPEN_STATE = 1;
+const FALLBACK_UPLOADS_DIRECTORY = './uploads';
 
 const serializeUser = (user: UserRecord) => ({
   id: user.id,
@@ -180,6 +207,7 @@ const serializeMask = (mask: MaskRecord) => ({
   displayName: mask.displayName,
   color: mask.color,
   avatarSeed: mask.avatarSeed,
+  avatarUploadId: mask.avatarUploadId ?? null,
   createdAt: mask.createdAt.toISOString(),
 });
 
@@ -212,7 +240,7 @@ const normalizeServerPermissions = (permissions: readonly ServerPermission[]) =>
 };
 
 const getServerPermissionsForMember = (member: ServerMemberRecord): ServerPermission[] => {
-  if (member.role === 'OWNER') {
+  if (member.role === 'OWNER' || member.role === 'ADMIN') {
     return [...ALL_SERVER_PERMISSIONS];
   }
 
@@ -289,6 +317,36 @@ const serializeSocketMaskIdentity = (mask: MaskRecord): SocketMaskIdentity => ({
   displayName: mask.displayName,
   avatarSeed: mask.avatarSeed,
   color: mask.color,
+  avatarUploadId: mask.avatarUploadId ?? null,
+});
+
+const serializeImageAttachment = (upload: UploadRecord | null): ImageAttachment | null => {
+  if (!upload) {
+    return null;
+  }
+
+  if (!IMAGE_CONTENT_TYPES.has(upload.contentType as AllowedImageContentType)) {
+    return null;
+  }
+
+  return {
+    id: upload.id,
+    fileName: upload.fileName,
+    contentType: upload.contentType as AllowedImageContentType,
+    sizeBytes: upload.sizeBytes,
+  };
+};
+
+const serializeUploadedImage = (upload: UploadRecord) => ({
+  id: upload.id,
+  ownerUserId: upload.ownerUserId,
+  kind: upload.kind,
+  contextType: upload.contextType,
+  contextId: upload.contextId,
+  fileName: upload.fileName,
+  contentType: upload.contentType,
+  sizeBytes: upload.sizeBytes,
+  createdAt: upload.createdAt.toISOString(),
 });
 
 const serializeServerMember = (member: ServerMemberRecord) => ({
@@ -303,6 +361,7 @@ const serializeServerMember = (member: ServerMemberRecord) => ({
     displayName: member.serverMask.displayName,
     color: member.serverMask.color,
     avatarSeed: member.serverMask.avatarSeed,
+    avatarUploadId: member.serverMask.avatarUploadId ?? null,
   },
 });
 
@@ -315,6 +374,7 @@ const serializeServerListItem = (item: ServerListItemRecord) => ({
     displayName: item.serverMask.displayName,
     color: item.serverMask.color,
     avatarSeed: item.serverMask.avatarSeed,
+    avatarUploadId: item.serverMask.avatarUploadId ?? null,
   },
 });
 
@@ -340,10 +400,11 @@ const serializeRoomMember = (membership: RoomMembershipRecord): RoomMemberState 
   role: membership.role,
 });
 
-const serializeRealtimeMessage = (message: MessageRecord) => ({
+const serializeRealtimeMessage = (message: MessageRecord): RoomMessage => ({
   id: message.id,
   roomId: message.roomId,
   body: message.body,
+  image: serializeImageAttachment(message.imageUpload),
   createdAt: message.createdAt.toISOString(),
   mask: serializeSocketMaskIdentity(message.mask),
 });
@@ -360,18 +421,20 @@ const serializeDmParticipant = (participant: DmParticipantRecord) => ({
   mask: serializeSocketMaskIdentity(participant.activeMask),
 });
 
-const serializeDmMessage = (message: DmMessageRecord) => ({
+const serializeDmMessage = (message: DmMessageRecord): DmMessage => ({
   id: message.id,
   threadId: message.threadId,
   body: message.body,
+  image: serializeImageAttachment(message.imageUpload),
   createdAt: message.createdAt.toISOString(),
   mask: serializeSocketMaskIdentity(message.mask),
 });
 
-const serializeServerMessage = (message: ServerMessageRecord) => ({
+const serializeServerMessage = (message: ServerMessageRecord): ChannelMessage => ({
   id: message.id,
   channelId: message.channelId,
   body: message.body,
+  image: serializeImageAttachment(message.imageUpload),
   createdAt: message.createdAt.toISOString(),
   mask: serializeSocketMaskIdentity(message.mask),
 });
@@ -474,6 +537,35 @@ const sanitizeMessageBody = (body: string): string => {
   return escaped.slice(0, MAX_ROOM_MESSAGE_LENGTH);
 };
 
+const sanitizeImageFileName = (value: string): string => {
+  const safe = path
+    .basename(value)
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, MAX_IMAGE_FILENAME_LENGTH)
+    .trim();
+
+  if (!safe) {
+    return 'image';
+  }
+
+  return safe;
+};
+
+const getMultipartFieldString = (part: MultipartFile, fieldName: string): string | undefined => {
+  const field = part.fields[fieldName];
+  if (!field || typeof field !== 'object' || !('value' in field)) {
+    return undefined;
+  }
+
+  const value = (field as { value?: unknown }).value;
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  return value;
+};
+
 const isRoomExpired = (room: RoomRecord, now: Date): boolean => {
   if (!room.expiresAt) {
     return false;
@@ -549,6 +641,14 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }),
   });
 
+  await app.register(multipart, {
+    limits: {
+      fileSize: env.MAX_IMAGE_UPLOAD_BYTES,
+      files: 1,
+      fields: 8,
+    },
+  });
+
   await app.register(websocket);
 
   app.addHook('onResponse', async (request, reply) => {
@@ -619,6 +719,8 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
   const dmSockets = new Map<string, Set<WebSocket>>();
   const channelSockets = new Map<string, Set<WebSocket>>();
   const roomExpiryTimers = new Map<string, NodeJS.Timeout>();
+  const uploadRoot = path.resolve(process.cwd(), env.UPLOADS_DIR || FALLBACK_UPLOADS_DIRECTORY);
+  await mkdir(uploadRoot, { recursive: true });
   const livekitUrl = env.LIVEKIT_URL ?? null;
   const livekitApiKey = env.LIVEKIT_API_KEY ?? null;
   const livekitApiSecret = env.LIVEKIT_API_SECRET ?? null;
@@ -1232,6 +1334,179 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     return true;
   };
 
+  const resolveUploadAbsolutePath = (storagePath: string): string | null => {
+    const resolvedPath = path.resolve(uploadRoot, storagePath);
+    const relativePath = path.relative(uploadRoot, resolvedPath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return null;
+    }
+
+    return resolvedPath;
+  };
+
+  const authorizeUploadContext = async (input: {
+    userId: string;
+    contextType: UploadContextType;
+    contextId: string;
+    allowExpiredRoom?: boolean;
+  }) => {
+    if (input.contextType === 'SERVER_CHANNEL') {
+      const channel = await repo.findChannelById(input.contextId);
+      if (!channel) {
+        return { ok: false as const, status: 404, message: 'Channel not found' };
+      }
+
+      const member = await repo.findServerMember(channel.serverId, input.userId);
+      if (!member) {
+        return { ok: false as const, status: 403, message: 'You are not a member of this server' };
+      }
+
+      return { ok: true as const };
+    }
+
+    if (input.contextType === 'DM_THREAD') {
+      const [thread, participant] = await Promise.all([
+        repo.findDmThreadById(input.contextId),
+        repo.findDmParticipant(input.contextId, input.userId),
+      ]);
+      if (!thread) {
+        return { ok: false as const, status: 404, message: 'DM thread not found' };
+      }
+
+      if (!participant) {
+        return { ok: false as const, status: 403, message: 'Not authorized for this DM thread' };
+      }
+
+      return { ok: true as const };
+    }
+
+    const room = await repo.findRoomById(input.contextId);
+    if (!room) {
+      return { ok: false as const, status: 404, message: 'Room not found' };
+    }
+
+    if (!input.allowExpiredRoom && isRoomExpired(room, new Date())) {
+      return { ok: false as const, status: 410, message: 'Room is expired' };
+    }
+
+    const masks = await repo.listMasksByUser(input.userId);
+    for (const mask of masks) {
+      const membership = await repo.findRoomMembershipWithMask(room.id, mask.id);
+      if (membership) {
+        return { ok: true as const };
+      }
+    }
+
+    return { ok: false as const, status: 403, message: 'Not authorized for this room' };
+  };
+
+  const validateMessageImageUpload = async (input: {
+    userId: string;
+    imageUploadId: string | undefined;
+    contextType: UploadContextType;
+    contextId: string;
+  }) => {
+    if (!input.imageUploadId) {
+      return {
+        ok: true as const,
+        upload: null as UploadRecord | null,
+      };
+    }
+
+    const upload = await repo.findUploadById(input.imageUploadId);
+    if (!upload) {
+      return { ok: false as const, message: 'Attachment not found' };
+    }
+
+    if (upload.ownerUserId !== input.userId) {
+      return { ok: false as const, message: 'Attachment is not owned by the authenticated user' };
+    }
+
+    if (upload.kind !== 'MESSAGE_IMAGE') {
+      return { ok: false as const, message: 'Attachment type is not valid for messages' };
+    }
+
+    if (upload.contextType !== input.contextType || upload.contextId !== input.contextId) {
+      return { ok: false as const, message: 'Attachment does not belong to this chat context' };
+    }
+
+    return {
+      ok: true as const,
+      upload,
+    };
+  };
+
+  const storeUploadFromMultipart = async (input: {
+    file: MultipartFile;
+    ownerUserId: string;
+    kind: UploadKind;
+    contextType: UploadContextType | null;
+    contextId: string | null;
+    storagePrefix: string;
+  }): Promise<{ upload: UploadRecord } | { error: { status: number; message: string } }> => {
+    const contentType = input.file.mimetype.toLowerCase();
+    if (!IMAGE_CONTENT_TYPES.has(contentType as (typeof ALLOWED_IMAGE_CONTENT_TYPES)[number])) {
+      return {
+        error: {
+          status: 400,
+          message: `Unsupported image content type. Allowed: ${ALLOWED_IMAGE_CONTENT_TYPES.join(', ')}`,
+        },
+      };
+    }
+
+    const buffer = await input.file.toBuffer();
+    if (buffer.length === 0) {
+      return {
+        error: {
+          status: 400,
+          message: 'Image file is empty',
+        },
+      };
+    }
+
+    if (buffer.length > env.MAX_IMAGE_UPLOAD_BYTES) {
+      return {
+        error: {
+          status: 413,
+          message: `Image exceeds maximum size (${env.MAX_IMAGE_UPLOAD_BYTES} bytes)`,
+        },
+      };
+    }
+
+    const extension = IMAGE_CONTENT_TYPE_EXTENSION_MAP[contentType] ?? 'bin';
+    const storedFileName = `${randomUUID()}.${extension}`;
+    const relativeStoragePath = path.join(input.storagePrefix, storedFileName);
+    const absoluteStoragePath = resolveUploadAbsolutePath(relativeStoragePath);
+    if (!absoluteStoragePath) {
+      return {
+        error: {
+          status: 500,
+          message: 'Failed to resolve upload storage path',
+        },
+      };
+    }
+
+    await mkdir(path.dirname(absoluteStoragePath), { recursive: true });
+    await writeFile(absoluteStoragePath, buffer, { flag: 'wx' });
+
+    try {
+      const upload = await repo.createUpload({
+        ownerUserId: input.ownerUserId,
+        kind: input.kind,
+        contextType: input.contextType,
+        contextId: input.contextId,
+        fileName: sanitizeImageFileName(input.file.filename),
+        contentType,
+        sizeBytes: buffer.length,
+        storagePath: relativeStoragePath,
+      });
+      return { upload };
+    } catch (error) {
+      await unlink(absoluteStoragePath).catch(() => undefined);
+      throw error;
+    }
+  };
+
   const authorizeHostActor = async (userId: string, roomId: string, actorMaskId: string) => {
     const actorMask = await repo.findMaskByIdForUser(actorMaskId, userId);
     if (!actorMask) {
@@ -1275,6 +1550,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
           displayName: mask.displayName,
           color: mask.color,
           avatarSeed: mask.avatarSeed,
+          avatarUploadId: mask.avatarUploadId ?? null,
         };
       }
     }
@@ -1688,6 +1964,112 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       user: serializeUser(user),
       masks: masks.map(serializeMask),
     });
+  });
+
+  app.post('/uploads/image', { preHandler: [authenticate] }, async (request, reply) => {
+    if (!request.isMultipart()) {
+      reply.code(400);
+      return { message: 'Expected multipart/form-data request' };
+    }
+
+    const multipartFile = await request.file();
+    if (!multipartFile) {
+      reply.code(400);
+      return { message: 'Image file is required' };
+    }
+
+    const payload = parseOrReply(
+      UploadImageRequestSchema,
+      {
+        contextType: getMultipartFieldString(multipartFile, 'contextType'),
+        contextId: getMultipartFieldString(multipartFile, 'contextId'),
+      },
+      reply,
+    );
+    if (!payload) {
+      return;
+    }
+
+    const contextAuthorization = await authorizeUploadContext({
+      userId: request.user.sub,
+      contextType: payload.contextType,
+      contextId: payload.contextId,
+    });
+    if (!contextAuthorization.ok) {
+      reply.code(contextAuthorization.status);
+      return { message: contextAuthorization.message };
+    }
+
+    const stored = await storeUploadFromMultipart({
+      file: multipartFile,
+      ownerUserId: request.user.sub,
+      kind: 'MESSAGE_IMAGE',
+      contextType: payload.contextType,
+      contextId: payload.contextId,
+      storagePrefix: path.join('message-image', payload.contextType.toLowerCase(), payload.contextId),
+    });
+    if ('error' in stored) {
+      reply.code(stored.error.status);
+      return { message: stored.error.message };
+    }
+
+    reply.code(201);
+    return UploadImageResponseSchema.parse({
+      upload: serializeUploadedImage(stored.upload),
+    });
+  });
+
+  app.get('/uploads/:uploadId', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(UploadParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const upload = await repo.findUploadById(params.uploadId);
+    if (!upload) {
+      reply.code(404);
+      return { message: 'Upload not found' };
+    }
+
+    if (upload.kind === 'MESSAGE_IMAGE') {
+      if (!upload.contextType || !upload.contextId) {
+        reply.code(403);
+        return { message: 'Upload is not available for this context' };
+      }
+
+      const contextAuthorization = await authorizeUploadContext({
+        userId: request.user.sub,
+        contextType: upload.contextType,
+        contextId: upload.contextId,
+        allowExpiredRoom: true,
+      });
+      if (!contextAuthorization.ok) {
+        reply.code(contextAuthorization.status);
+        return { message: contextAuthorization.message };
+      }
+    }
+
+    const absolutePath = resolveUploadAbsolutePath(upload.storagePath);
+    if (!absolutePath) {
+      reply.code(404);
+      return { message: 'Upload file not found' };
+    }
+
+    try {
+      const fileStats = await stat(absolutePath);
+      if (!fileStats.isFile()) {
+        reply.code(404);
+        return { message: 'Upload file not found' };
+      }
+    } catch {
+      reply.code(404);
+      return { message: 'Upload file not found' };
+    }
+
+    reply.header('Content-Type', upload.contentType);
+    reply.header('Content-Length', String(upload.sizeBytes));
+    reply.header('Cache-Control', 'private, max-age=300');
+    return reply.send(createReadStream(absolutePath));
   });
 
   app.post('/friends/request', { preHandler: [authenticate] }, async (request, reply) => {
@@ -3223,6 +3605,69 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     return CreateMaskResponseSchema.parse({ mask: serializeMask(mask) });
   });
 
+  app.post('/masks/:maskId/avatar', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(SetMaskAvatarParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const mask = await repo.findMaskByIdForUser(params.maskId, request.user.sub);
+    if (!mask) {
+      reply.code(403);
+      return { message: 'Mask does not belong to the authenticated user' };
+    }
+
+    if (!request.isMultipart()) {
+      reply.code(400);
+      return { message: 'Expected multipart/form-data request' };
+    }
+
+    const multipartFile = await request.file();
+    if (!multipartFile) {
+      reply.code(400);
+      return { message: 'Avatar image file is required' };
+    }
+
+    const stored = await storeUploadFromMultipart({
+      file: multipartFile,
+      ownerUserId: request.user.sub,
+      kind: 'MASK_AVATAR',
+      contextType: null,
+      contextId: null,
+      storagePrefix: path.join('mask-avatar', request.user.sub, mask.id),
+    });
+    if ('error' in stored) {
+      reply.code(stored.error.status);
+      return { message: stored.error.message };
+    }
+
+    let updatedMask: MaskRecord;
+    try {
+      updatedMask = await repo.setMaskAvatarUpload(mask.id, stored.upload.id);
+    } catch (error) {
+      const uploadedPath = resolveUploadAbsolutePath(stored.upload.storagePath);
+      if (uploadedPath) {
+        await unlink(uploadedPath).catch(() => undefined);
+      }
+      throw error;
+    }
+
+    if (mask.avatarUploadId && mask.avatarUploadId !== stored.upload.id) {
+      const previousUpload = await repo.findUploadById(mask.avatarUploadId);
+      if (previousUpload?.ownerUserId === request.user.sub && previousUpload.kind === 'MASK_AVATAR') {
+        const previousPath = resolveUploadAbsolutePath(previousUpload.storagePath);
+        if (previousPath) {
+          await unlink(previousPath).catch(() => undefined);
+        }
+      }
+    }
+
+    return SetMaskAvatarResponseSchema.parse({
+      success: true,
+      mask: serializeMask(updatedMask),
+    });
+  });
+
   app.delete('/masks/:maskId', { preHandler: [authenticate] }, async (request, reply) => {
     const params = parseOrReply(DeleteMaskParamsSchema, request.params, reply);
     if (!params) {
@@ -3587,7 +4032,12 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       await emitRoomState(room.id);
     };
 
-    const handleSendMessage = async (roomId: string, maskId: string, body: string) => {
+    const handleSendMessage = async (
+      roomId: string,
+      maskId: string,
+      body: string,
+      imageUploadId?: string,
+    ) => {
       if (!session.joinedRoomId || !session.joinedMember) {
         sendSocketError(connection.socket, 'Join a room before sending messages');
         return;
@@ -3631,7 +4081,18 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       }
 
       const sanitizedBody = sanitizeMessageBody(body);
-      if (!sanitizedBody) {
+      const uploadValidation = await validateMessageImageUpload({
+        userId: session.userId,
+        imageUploadId,
+        contextType: 'EPHEMERAL_ROOM',
+        contextId: roomId,
+      });
+      if (!uploadValidation.ok) {
+        sendSocketError(connection.socket, uploadValidation.message);
+        return;
+      }
+
+      if (!sanitizedBody && !uploadValidation.upload) {
         sendSocketError(connection.socket, 'Message body is empty after sanitization');
         return;
       }
@@ -3640,6 +4101,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         roomId,
         maskId,
         body: sanitizedBody,
+        imageUploadId: uploadValidation.upload?.id,
       });
 
       broadcastToRoom(roomId, {
@@ -3689,7 +4151,12 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       await emitDmState(thread.id);
     };
 
-    const handleSendDm = async (threadId: string, maskId: string, body: string) => {
+    const handleSendDm = async (
+      threadId: string,
+      maskId: string,
+      body: string,
+      imageUploadId?: string,
+    ) => {
       if (!session.joinedDmThreadId || !session.joinedDmMaskId) {
         sendSocketError(connection.socket, 'Join a DM before sending messages');
         return;
@@ -3737,7 +4204,18 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       }
 
       const sanitizedBody = sanitizeMessageBody(body);
-      if (!sanitizedBody) {
+      const uploadValidation = await validateMessageImageUpload({
+        userId: session.userId,
+        imageUploadId,
+        contextType: 'DM_THREAD',
+        contextId: threadId,
+      });
+      if (!uploadValidation.ok) {
+        sendSocketError(connection.socket, uploadValidation.message);
+        return;
+      }
+
+      if (!sanitizedBody && !uploadValidation.upload) {
         sendSocketError(connection.socket, 'Message body is empty after sanitization');
         return;
       }
@@ -3746,6 +4224,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         threadId,
         maskId,
         body: sanitizedBody,
+        imageUploadId: uploadValidation.upload?.id,
       });
 
       broadcastToDm(threadId, {
@@ -3801,7 +4280,11 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       await emitChannelState(channel.id);
     };
 
-    const handleSendChannelMessage = async (channelId: string, body: string) => {
+    const handleSendChannelMessage = async (
+      channelId: string,
+      body: string,
+      imageUploadId?: string,
+    ) => {
       if (!session.joinedChannelId || !session.joinedChannelMember) {
         sendSocketError(connection.socket, 'Join a channel before sending messages');
         return;
@@ -3835,7 +4318,18 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       }
 
       const sanitizedBody = sanitizeMessageBody(body);
-      if (!sanitizedBody) {
+      const uploadValidation = await validateMessageImageUpload({
+        userId: session.userId,
+        imageUploadId,
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+      });
+      if (!uploadValidation.ok) {
+        sendSocketError(connection.socket, uploadValidation.message);
+        return;
+      }
+
+      if (!sanitizedBody && !uploadValidation.upload) {
         sendSocketError(connection.socket, 'Message body is empty after sanitization');
         return;
       }
@@ -3853,6 +4347,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         channelId,
         maskId: effectiveMaskRecord.id,
         body: sanitizedBody,
+        imageUploadId: uploadValidation.upload?.id,
       });
 
       broadcastToChannel(channelId, {
@@ -3888,6 +4383,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
           parsedEvent.data.data.roomId,
           parsedEvent.data.data.maskId,
           parsedEvent.data.data.body,
+          parsedEvent.data.data.imageUploadId,
         );
         return;
       }
@@ -3902,6 +4398,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
           parsedEvent.data.data.threadId,
           parsedEvent.data.data.maskId,
           parsedEvent.data.data.body,
+          parsedEvent.data.data.imageUploadId,
         );
         return;
       }
@@ -3915,6 +4412,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         void handleSendChannelMessage(
           parsedEvent.data.data.channelId,
           parsedEvent.data.data.body,
+          parsedEvent.data.data.imageUploadId,
         );
       }
     });

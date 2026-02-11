@@ -51,6 +51,17 @@ enum VoiceContextType {
   EPHEMERAL_ROOM
 }
 
+enum UploadKind {
+  MESSAGE_IMAGE
+  MASK_AVATAR
+}
+
+enum UploadContextType {
+  SERVER_CHANNEL
+  DM_THREAD
+  EPHEMERAL_ROOM
+}
+
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique
@@ -72,6 +83,7 @@ model User {
   serverMemberRoles      ServerMemberRole[]
   channelMemberIdentities ChannelMemberIdentity[]
   voiceParticipants      VoiceParticipant[]
+  ownedUploads           Upload[]
 }
 
 model Mask {
@@ -80,6 +92,7 @@ model Mask {
   displayName String
   color       String
   avatarSeed  String
+  avatarUploadId String? @db.Uuid
   createdAt   DateTime @default(now())
 
   user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -94,6 +107,7 @@ model Mask {
   serverMessages     ServerMessage[]
   channelMemberIdentities ChannelMemberIdentity[]
   voiceParticipants  VoiceParticipant[]
+  avatarUpload       Upload?           @relation("MaskAvatarUpload", fields: [avatarUploadId], references: [id], onDelete: SetNull)
 }
 
 model Room {
@@ -128,10 +142,12 @@ model Message {
   roomId    String   @db.Uuid
   maskId    String   @db.Uuid
   body      String
+  imageUploadId String? @db.Uuid
   createdAt DateTime @default(now())
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
   mask Mask @relation(fields: [maskId], references: [id], onDelete: Cascade)
+  imageUpload Upload? @relation("RoomMessageImageUpload", fields: [imageUploadId], references: [id], onDelete: SetNull)
 }
 
 model RoomModeration {
@@ -288,10 +304,12 @@ model ServerMessage {
   channelId String   @db.Uuid
   maskId    String   @db.Uuid
   body      String
+  imageUploadId String? @db.Uuid
   createdAt DateTime @default(now())
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   mask    Mask    @relation(fields: [maskId], references: [id], onDelete: Restrict)
+  imageUpload Upload? @relation("ServerMessageImageUpload", fields: [imageUploadId], references: [id], onDelete: SetNull)
 
   @@index([channelId, createdAt])
 }
@@ -330,12 +348,36 @@ model DMMessage {
   threadId  String   @db.Uuid
   maskId    String   @db.Uuid
   body      String
+  imageUploadId String? @db.Uuid
   createdAt DateTime @default(now())
 
   thread DMThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   mask   Mask     @relation(fields: [maskId], references: [id], onDelete: Restrict)
+  imageUpload Upload? @relation("DmMessageImageUpload", fields: [imageUploadId], references: [id], onDelete: SetNull)
 
   @@index([threadId, createdAt])
+}
+
+model Upload {
+  id          String            @id @default(uuid()) @db.Uuid
+  ownerUserId String            @db.Uuid
+  kind        UploadKind
+  contextType UploadContextType?
+  contextId   String?           @db.Uuid
+  fileName    String
+  contentType String
+  sizeBytes   Int
+  storagePath String
+  createdAt   DateTime          @default(now())
+
+  ownerUser      User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  maskAvatarFor  Mask[]          @relation("MaskAvatarUpload")
+  roomMessages   Message[]       @relation("RoomMessageImageUpload")
+  serverMessages ServerMessage[] @relation("ServerMessageImageUpload")
+  dmMessages     DMMessage[]     @relation("DmMessageImageUpload")
+
+  @@index([ownerUserId, createdAt])
+  @@index([contextType, contextId, createdAt])
 }
 
 model VoiceSession {

@@ -13,9 +13,10 @@ import {
   type ServerMember,
 } from '@masq/shared';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
+  buildUploadUrl,
   createServerRole,
   createServer,
   createServerChannel,
@@ -29,9 +30,12 @@ import {
   setChannelMask,
   setServerMemberRoles,
   setServerMask,
+  uploadImage,
   updateServerSettings,
   updateServerRole,
 } from '../lib/api';
+import { MaskAvatar } from '../components/MaskAvatar';
+import { SpacesSidebar } from '../components/SpacesSidebar';
 import { CallBar } from '../components/rtc/CallBar';
 import { CallPanel } from '../components/rtc/CallPanel';
 import { DevicePickerModal } from '../components/rtc/DevicePickerModal';
@@ -67,23 +71,8 @@ const formatTimestamp = (isoDate: string) =>
 const hasPermission = (permissions: readonly ServerPermission[], permission: ServerPermission) =>
   permissions.includes(permission);
 
-const toServerGlyph = (name: string) => {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return '?';
-  }
-
-  const words = trimmed.split(/\s+/).filter(Boolean);
-  if (words.length === 1) {
-    return words[0].slice(0, 2).toUpperCase();
-  }
-
-  return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
-};
-
 export function ServersPage({ me }: ServersPageProps) {
   const navigate = useNavigate();
-  const location = useLocation();
   const params = useParams<{ serverId: string; channelId: string }>();
   const selectedServerId = params.serverId ?? null;
   const selectedChannelId = params.channelId ?? null;
@@ -119,6 +108,8 @@ export function ServersPage({ me }: ServersPageProps) {
   const [latestInviteCode, setLatestInviteCode] = useState<string | null>(null);
 
   const [composerBody, setComposerBody] = useState('');
+  const [composerImageFile, setComposerImageFile] = useState<File | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [socketStatus, setSocketStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected'>(
     'idle',
   );
@@ -183,16 +174,6 @@ export function ServersPage({ me }: ServersPageProps) {
   const onlineUserIds = useMemo(
     () => new Set(channelMembers.map((member) => member.userId)),
     [channelMembers],
-  );
-
-  const railItems = useMemo(
-    () => [
-      { to: '/servers', label: 'Servers', glyph: 'S' },
-      { to: '/friends', label: 'Friends', glyph: 'F' },
-      { to: '/dm', label: 'DMs', glyph: 'D' },
-      { to: '/rooms', label: 'Rooms', glyph: 'R' },
-    ],
-    [],
   );
 
   useEffect(() => {
@@ -680,9 +661,9 @@ export function ServersPage({ me }: ServersPageProps) {
     }
   };
 
-  const onSendMessage = (event: FormEvent<HTMLFormElement>) => {
+  const onSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedChannel || !composerBody.trim()) {
+    if (!selectedChannel || (!composerBody.trim() && !composerImageFile)) {
       return;
     }
 
@@ -691,129 +672,60 @@ export function ServersPage({ me }: ServersPageProps) {
       return;
     }
 
-    const messageEvent = ClientSocketEventSchema.parse({
-      type: 'SEND_CHANNEL_MESSAGE',
-      data: {
-        channelId: selectedChannel.id,
-        body: composerBody,
-      },
-    });
+    setSendingMessage(true);
+    setSocketError(null);
+    try {
+      let imageUploadId: string | undefined;
+      if (composerImageFile) {
+        const upload = await uploadImage(
+          {
+            contextType: 'SERVER_CHANNEL',
+            contextId: selectedChannel.id,
+          },
+          composerImageFile,
+        );
+        imageUploadId = upload.upload.id;
+      }
 
-    socketRef.current.send(JSON.stringify(messageEvent));
-    setComposerBody('');
+      const messageEvent = ClientSocketEventSchema.parse({
+        type: 'SEND_CHANNEL_MESSAGE',
+        data: {
+          channelId: selectedChannel.id,
+          body: composerBody,
+          imageUploadId,
+        },
+      });
+
+      socketRef.current.send(JSON.stringify(messageEvent));
+      setComposerBody('');
+      setComposerImageFile(null);
+    } catch (err) {
+      setSocketError(err instanceof ApiError ? err.message : 'Failed to send message');
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
-  const persistedMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY);
-  const railMask = me.masks.find((mask) => mask.id === persistedMaskId) ?? me.masks[0] ?? null;
   const canJoinRtc = Boolean(selectedChannel && currentChannelMaskId);
   const isConnectedRtc = rtc.connectionState === 'connected' || rtc.connectionState === 'reconnecting';
 
   return (
     <>
       <div className="mx-auto w-full max-w-[1520px]">
-        <div className="grid gap-3 xl:grid-cols-[64px_260px_minmax(0,1fr)_320px]">
-          <aside className="masq-surface border border-ink-700 bg-ink-800/85 p-2 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-3rem)] xl:flex-col">
-            <div className="mb-2 flex items-center justify-between gap-2 xl:block">
-              <Link
-                to="/home"
-                className="flex h-11 w-11 items-center justify-center rounded-xl border border-ink-700 bg-ink-900 transition hover:border-neon-400/50"
-                aria-label="Masq home"
-              >
-                <img src="/icon.png" alt="Masq" className="h-7 w-7 object-contain" />
-              </Link>
-            </div>
-
-            <nav className="grid flex-1 grid-cols-4 gap-2 xl:grid-cols-1">
-              {railItems.map((item) => {
-                const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    title={item.label}
-                    className={`flex h-11 items-center justify-center rounded-xl border text-xs font-semibold uppercase tracking-[0.12em] transition ${
-                      active
-                        ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-neon-100'
-                        : 'border-ink-700 bg-ink-900/75 text-slate-400 hover:border-slate-500 hover:text-slate-100'
-                    }`}
-                  >
-                    {item.glyph}
-                  </Link>
-                );
-              })}
-            </nav>
-
-            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-ink-700 bg-ink-900/80 p-2 xl:block">
-              <div className="flex items-center gap-2">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: railMask?.color ?? '#78e6da' }}
-                />
-                <span className="truncate text-[11px] uppercase tracking-[0.12em] text-slate-400">
-                  {railMask?.displayName ?? 'No Mask'}
-                </span>
-              </div>
-              <Link
-                to="/masks"
-                className="rounded-md border border-ink-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
-              >
-                Settings
-              </Link>
-            </div>
-          </aside>
-
-          <aside className="masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+        <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+          <div className="xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
             <div className="flex h-full flex-col gap-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Servers</p>
-                  <h1 className="text-base font-semibold text-white">Your Guilds</h1>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setServerDialogTab('create');
-                    setServerDialogOpen(true);
-                  }}
-                  className="rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400"
-                >
-                  Create / Join
-                </button>
-              </div>
-
-              {serversLoading ? <p className="text-xs text-slate-500">Loading servers...</p> : null}
-              {!serversLoading && servers.length === 0 ? (
-                <p className="rounded-lg border border-ink-700 bg-ink-900/75 px-2 py-2 text-xs text-slate-500">
-                  No servers yet.
-                </p>
-              ) : null}
-
-              <div className="space-y-2 overflow-y-auto">
-                {servers.map((item) => (
-                  <button
-                    key={item.server.id}
-                    type="button"
-                    onClick={() => navigate(`/servers/${item.server.id}`)}
-                    className={`w-full rounded-xl border px-2.5 py-2 text-left transition ${
-                      selectedServerId === item.server.id
-                        ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-white'
-                        : 'border-ink-700 bg-ink-900/70 text-slate-300 hover:border-slate-600 hover:text-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-ink-700 bg-ink-800 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-200">
-                        {toServerGlyph(item.server.name)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{item.server.name}</p>
-                        <p className="truncate text-[10px] uppercase tracking-[0.11em] text-slate-500">
-                          {item.role} - {item.serverMask.displayName}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <SpacesSidebar
+                className="flex-1 overflow-hidden"
+                servers={servers}
+                serversLoading={serversLoading}
+                serversError={serversError}
+                selectedServerId={selectedServerId}
+                onOpenServerDialog={() => {
+                  setServerDialogTab('create');
+                  setServerDialogOpen(true);
+                }}
+              />
 
               {selectedServerId && serverDetails ? (
                 <div className="mt-auto space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
@@ -905,13 +817,8 @@ export function ServersPage({ me }: ServersPageProps) {
                 </div>
               ) : null}
 
-              {serversError ? (
-                <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-200">
-                  {serversError}
-                </div>
-              ) : null}
             </div>
-          </aside>
+          </div>
 
           <main className="masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
             <div className="flex h-full flex-col gap-3">
@@ -1029,16 +936,36 @@ export function ServersPage({ me }: ServersPageProps) {
                         <article key={message.id} className="rounded-lg border border-ink-700 bg-ink-800/70 p-2.5">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 text-sm">
-                              <span
-                                className="inline-block h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: message.mask.color }}
+                              <MaskAvatar
+                                displayName={message.mask.displayName}
+                                color={message.mask.color}
+                                avatarUploadId={message.mask.avatarUploadId}
+                                sizeClassName="h-6 w-6"
+                                textClassName="text-[9px]"
                               />
                               <span className="font-medium text-white">{message.mask.displayName}</span>
                               <span className="text-xs text-slate-500">{message.mask.avatarSeed}</span>
                             </div>
                             <span className="text-xs text-slate-500">{formatTimestamp(message.createdAt)}</span>
                           </div>
-                          <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                          {message.body ? (
+                            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                          ) : null}
+                          {message.image ? (
+                            <a
+                              className="mt-2 block max-w-md overflow-hidden rounded-lg border border-ink-700 bg-ink-900/70"
+                              href={buildUploadUrl(message.image.id)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <img
+                                src={buildUploadUrl(message.image.id)}
+                                alt={message.image.fileName}
+                                className="max-h-80 w-full object-contain"
+                                loading="lazy"
+                              />
+                            </a>
+                          ) : null}
                         </article>
                       ))}
                     </div>
@@ -1051,18 +978,50 @@ export function ServersPage({ me }: ServersPageProps) {
                       onChange={(event) => setComposerBody(event.target.value)}
                       placeholder="Speak as your selected mask"
                       maxLength={MAX_ROOM_MESSAGE_LENGTH}
-                      disabled={socketStatus !== 'connected'}
+                      disabled={socketStatus !== 'connected' || sendingMessage}
                     />
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <label className="cursor-pointer rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-neon-400 hover:text-neon-100">
+                        Attach Image
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          className="hidden"
+                          disabled={socketStatus !== 'connected' || sendingMessage}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            setComposerImageFile(file);
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      {composerImageFile ? (
+                        <button
+                          type="button"
+                          onClick={() => setComposerImageFile(null)}
+                          className="rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+                        >
+                          Clear Image
+                        </button>
+                      ) : null}
+                    </div>
+                    {composerImageFile ? (
+                      <p className="mt-1 text-xs text-slate-400">Attachment: {composerImageFile.name}</p>
+                    ) : null}
                     <div className="mt-2 flex items-center justify-between">
                       <p className="text-xs text-slate-500">
                         {composerBody.length}/{MAX_ROOM_MESSAGE_LENGTH}
                       </p>
                       <button
                         type="submit"
-                        disabled={socketStatus !== 'connected'}
+                        disabled={
+                          socketStatus !== 'connected' ||
+                          sendingMessage ||
+                          (!composerBody.trim() && !composerImageFile)
+                        }
                         className="rounded-md border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Send
+                        {sendingMessage ? 'Sending...' : 'Send'}
                       </button>
                     </div>
                   </form>
@@ -1135,9 +1094,12 @@ export function ServersPage({ me }: ServersPageProps) {
                           <article key={member.userId} className="rounded-lg border border-ink-700 bg-ink-900/75 p-2.5">
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="inline-block h-2.5 w-2.5 rounded-full"
-                                  style={{ backgroundColor: member.serverMask.color }}
+                                <MaskAvatar
+                                  displayName={member.serverMask.displayName}
+                                  color={member.serverMask.color}
+                                  avatarUploadId={member.serverMask.avatarUploadId}
+                                  sizeClassName="h-6 w-6"
+                                  textClassName="text-[9px]"
                                 />
                                 <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
                               </div>

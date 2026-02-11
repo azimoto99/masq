@@ -18,6 +18,7 @@ import {
   unfriend,
 } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
+import { MaskAvatar } from '../components/MaskAvatar';
 
 interface FriendsPageProps {
   me: MeResponse;
@@ -228,9 +229,18 @@ export function FriendsPage({ me }: FriendsPageProps) {
                 <article key={item.request.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
                   <p className="text-sm text-white">{item.fromUser.email}</p>
                   {item.fromUser.defaultMask ? (
-                    <p className="mt-1 text-xs text-slate-500">
-                      default mask: {item.fromUser.defaultMask.displayName} ({item.fromUser.defaultMask.avatarSeed})
-                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                      <MaskAvatar
+                        displayName={item.fromUser.defaultMask.displayName}
+                        color={item.fromUser.defaultMask.color}
+                        avatarUploadId={item.fromUser.defaultMask.avatarUploadId}
+                        sizeClassName="h-5 w-5"
+                        textClassName="text-[8px]"
+                      />
+                      <span>
+                        default mask: {item.fromUser.defaultMask.displayName} ({item.fromUser.defaultMask.avatarSeed})
+                      </span>
+                    </div>
                   ) : (
                     <p className="mt-1 text-xs text-slate-500">default mask: none</p>
                   )}
@@ -297,9 +307,12 @@ export function FriendsPage({ me }: FriendsPageProps) {
                 <p className="text-sm text-white">{friend.email}</p>
                 {friend.defaultMask ? (
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                    <span
-                      className="inline-block h-3 w-3 rounded-full"
-                      style={{ backgroundColor: friend.defaultMask.color }}
+                    <MaskAvatar
+                      displayName={friend.defaultMask.displayName}
+                      color={friend.defaultMask.color}
+                      avatarUploadId={friend.defaultMask.avatarUploadId}
+                      sizeClassName="h-5 w-5"
+                      textClassName="text-[8px]"
                     />
                     <span>{friend.defaultMask.displayName}</span>
                     <span>{friend.defaultMask.avatarSeed}</span>

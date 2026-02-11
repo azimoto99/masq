@@ -47,7 +47,10 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `POST /auth/logout`
 - `GET /me`
 - `POST /masks` `{ displayName, color?, avatarSeed? }`
+- `POST /masks/:maskId/avatar` `multipart/form-data` (`file`)
 - `DELETE /masks/:maskId`
+- `POST /uploads/image` `multipart/form-data` (`contextType`, `contextId`, `file`)
+- `GET /uploads/:uploadId` (auth-protected private media)
 - `POST /dm/start` `{ friendUserId, initialMaskId }`
 - `GET /dm/threads`
 - `GET /dm/:threadId`
@@ -99,6 +102,7 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 ## Realtime Events
 - `JOIN_ROOM { roomId, maskId }`
 - `SEND_MESSAGE { roomId, maskId, body }`
+- `SEND_MESSAGE { roomId, maskId, body?, imageUploadId? }`
 - `ROOM_STATE { room, members, recentMessages, serverTime }`
 - `NEW_MESSAGE { message }`
 - `MEMBER_JOINED { roomId, member }`
@@ -107,10 +111,12 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `ROOM_EXPIRED { roomId }`
 - `JOIN_DM { threadId, maskId }`
 - `SEND_DM { threadId, maskId, body }`
+- `SEND_DM { threadId, maskId, body?, imageUploadId? }`
 - `DM_STATE { threadId, participants, recentMessages }`
 - `NEW_DM_MESSAGE { threadId, message }`
 - `JOIN_CHANNEL { channelId }`
 - `SEND_CHANNEL_MESSAGE { channelId, body }`
+- `SEND_CHANNEL_MESSAGE { channelId, body?, imageUploadId? }`
 - `CHANNEL_STATE { channel, members, recentMessages }`
 - `NEW_CHANNEL_MESSAGE { message }`
 - Message body limit is `1000` characters (validated + sanitized server-side)
@@ -171,6 +177,10 @@ API_RATE_LIMIT_WINDOW_MS=60000
 LIVEKIT_URL=
 LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=
+
+# Upload storage
+UPLOADS_DIR=./uploads
+MAX_IMAGE_UPLOAD_BYTES=10485760
 ```
 
 ## Deployment Notes
@@ -182,6 +192,8 @@ LIVEKIT_API_SECRET=
 - Expose websocket upgrades for `/ws` in your reverse proxy.
 - Render hosts API/signaling; LiveKit hosts media (SFU/TURN/UDP). Do not host WebRTC media directly on Render.
 - Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on the API service.
+- For image/avatar uploads on Render, attach a persistent disk and set `UPLOADS_DIR` to that mount path (for example `/var/data/masq-uploads`).
+- Uploads are private by default: API auth is required and message images are context-authorized (server membership, DM participant, or room membership).
 - For Windows desktop builds (Tauri/Electron), allow microphone/camera/screen-capture permissions.
 
 ## RTC Smoke Test

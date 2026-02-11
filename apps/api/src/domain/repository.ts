@@ -5,6 +5,8 @@ import type {
   MembershipRole,
   RtcContextType,
   RoomKind,
+  UploadContextType,
+  UploadKind,
   ServerPermission,
   ServerMemberRole,
 } from '@masq/shared';
@@ -23,6 +25,7 @@ export interface MaskRecord {
   displayName: string;
   color: string;
   avatarSeed: string;
+  avatarUploadId: string | null;
   createdAt: Date;
 }
 
@@ -56,6 +59,7 @@ export interface MessageRecord {
   roomId: string;
   maskId: string;
   body: string;
+  imageUpload: UploadRecord | null;
   createdAt: Date;
   mask: MaskRecord;
 }
@@ -75,6 +79,7 @@ export interface FriendDefaultMaskRecord {
   displayName: string;
   color: string;
   avatarSeed: string;
+  avatarUploadId: string | null;
 }
 
 export interface FriendUserRecord {
@@ -166,6 +171,7 @@ export interface ServerMessageRecord {
   channelId: string;
   maskId: string;
   body: string;
+  imageUpload: UploadRecord | null;
   createdAt: Date;
   mask: MaskRecord;
 }
@@ -189,8 +195,22 @@ export interface DmMessageRecord {
   threadId: string;
   maskId: string;
   body: string;
+  imageUpload: UploadRecord | null;
   createdAt: Date;
   mask: MaskRecord;
+}
+
+export interface UploadRecord {
+  id: string;
+  ownerUserId: string;
+  kind: UploadKind;
+  contextType: UploadContextType | null;
+  contextId: string | null;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  storagePath: string;
+  createdAt: Date;
 }
 
 export interface VoiceSessionRecord {
@@ -223,6 +243,7 @@ export interface CreateMaskInput {
   displayName: string;
   color: string;
   avatarSeed: string;
+  avatarUploadId?: string | null;
 }
 
 export interface CreateRoomInput {
@@ -256,6 +277,7 @@ export interface CreateMessageInput {
   roomId: string;
   maskId: string;
   body: string;
+  imageUploadId?: string | null;
 }
 
 export interface CreateServerInviteInput {
@@ -301,12 +323,25 @@ export interface CreateDmMessageInput {
   threadId: string;
   maskId: string;
   body: string;
+  imageUploadId?: string | null;
 }
 
 export interface CreateServerMessageInput {
   channelId: string;
   maskId: string;
   body: string;
+  imageUploadId?: string | null;
+}
+
+export interface CreateUploadInput {
+  ownerUserId: string;
+  kind: UploadKind;
+  contextType: UploadContextType | null;
+  contextId: string | null;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  storagePath: string;
 }
 
 export interface CreateVoiceSessionInput {
@@ -331,6 +366,7 @@ export interface MasqRepository {
   listMasksByUser(userId: string): Promise<MaskRecord[]>;
   countMasksByUser(userId: string): Promise<number>;
   createMask(input: CreateMaskInput): Promise<MaskRecord>;
+  setMaskAvatarUpload(maskId: string, avatarUploadId: string | null): Promise<MaskRecord>;
   findMaskByIdForUser(maskId: string, userId: string): Promise<MaskRecord | null>;
   createServer(input: CreateServerInput): Promise<ServerRecord>;
   updateServerSettings(serverId: string, settings: { channelIdentityMode: ChannelIdentityMode }): Promise<ServerRecord>;
@@ -362,6 +398,8 @@ export interface MasqRepository {
   listServerChannels(serverId: string): Promise<ChannelRecord[]>;
   listServerMessages(channelId: string): Promise<ServerMessageRecord[]>;
   createServerMessage(input: CreateServerMessageInput): Promise<ServerMessageRecord>;
+  createUpload(input: CreateUploadInput): Promise<UploadRecord>;
+  findUploadById(uploadId: string): Promise<UploadRecord | null>;
   maskHasActiveRoomMembership(maskId: string, now: Date): Promise<boolean>;
   deleteMask(maskId: string): Promise<void>;
   listRoomsForMask(maskId: string, now: Date): Promise<RoomListItemRecord[]>;

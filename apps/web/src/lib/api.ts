@@ -6,6 +6,7 @@ import {
   CreateFriendRequestResponseSchema,
   CreateMaskRequestSchema,
   CreateMaskResponseSchema,
+  SetMaskAvatarResponseSchema,
   CreateServerChannelRequestSchema,
   CreateServerChannelResponseSchema,
   CreateServerInviteRequestSchema,
@@ -47,6 +48,8 @@ import {
   SetServerMemberRolesResponseSchema,
   SetDmMaskRequestSchema,
   SetDmMaskResponseSchema,
+  UploadImageRequestSchema,
+  UploadImageResponseSchema,
   CreateRtcSessionRequestSchema,
   CreateRtcSessionResponseSchema,
   LeaveRtcSessionResponseSchema,
@@ -65,6 +68,7 @@ import {
   type CreateFriendRequestResponse,
   type CreateMaskRequest,
   type CreateMaskResponse,
+  type SetMaskAvatarResponse,
   type CreateServerChannelRequest,
   type CreateServerChannelResponse,
   type CreateServerInviteRequest,
@@ -106,6 +110,8 @@ import {
   type SetServerMemberRolesResponse,
   type SetDmMaskRequest,
   type SetDmMaskResponse,
+  type UploadImageRequest,
+  type UploadImageResponse,
   type CreateRtcSessionRequest,
   type CreateRtcSessionResponse,
   type LeaveRtcSessionResponse,
@@ -149,6 +155,37 @@ const request = async <TInput, TOutput>(
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  const contentType = response.headers.get('content-type') ?? '';
+  const payload = contentType.includes('application/json') ? await response.json() : null;
+
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === 'object' && 'message' in payload
+        ? String((payload as Record<string, unknown>).message)
+        : `Request failed (${response.status})`;
+
+    throw new ApiError(message, response.status, payload);
+  }
+
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    throw new ApiError('Unexpected response payload', response.status, parsed.error.flatten());
+  }
+
+  return parsed.data;
+};
+
+const requestFormData = async <TOutput>(
+  path: string,
+  formData: FormData,
+  schema: z.ZodSchema<TOutput>,
+): Promise<TOutput> => {
+  const response = await fetch(`${apiBase}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
   });
 
   const contentType = response.headers.get('content-type') ?? '';
@@ -314,6 +351,35 @@ export const createMask = async (input: CreateMaskRequest): Promise<CreateMaskRe
 
 export const deleteMask = async (maskId: string): Promise<DeleteMaskResponse> => {
   return request(`/masks/${maskId}`, { method: 'DELETE' }, DeleteMaskResponseSchema);
+};
+
+export const uploadImage = async (
+  input: UploadImageRequest,
+  file: File,
+): Promise<UploadImageResponse> => {
+  const payload = UploadImageRequestSchema.parse(input);
+  const formData = new FormData();
+  formData.append('contextType', payload.contextType);
+  formData.append('contextId', payload.contextId);
+  formData.append('file', file);
+  return requestFormData('/uploads/image', formData, UploadImageResponseSchema);
+};
+
+export const setMaskAvatar = async (
+  maskId: string,
+  file: File,
+): Promise<SetMaskAvatarResponse> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return requestFormData(`/masks/${maskId}/avatar`, formData, SetMaskAvatarResponseSchema);
+};
+
+export const buildUploadUrl = (uploadId: string): string => {
+  if (!apiBase) {
+    return `/uploads/${encodeURIComponent(uploadId)}`;
+  }
+
+  return `${apiBase}/uploads/${encodeURIComponent(uploadId)}`;
 };
 
 export const listRooms = async (maskId: string): Promise<ListRoomsResponse> => {

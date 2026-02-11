@@ -39,6 +39,8 @@ export function CallPanel({
   onLeave,
   onMuteParticipant,
 }: CallPanelProps) {
+  const roomStateText = roomName ? 'Private room active' : '';
+
   if (!sessionId) {
     return (
       <div className="rounded-xl border border-ink-700 bg-ink-800/70 p-3">
@@ -61,7 +63,10 @@ export function CallPanel({
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-[0.15em] text-slate-500">Call</p>
-          <p className="text-[11px] text-slate-500">{statusText(connectionState)} {roomName ? `- ${roomName}` : ''}</p>
+          <p className="text-[11px] text-slate-500">
+            {statusText(connectionState)}
+            {roomStateText ? ` - ${roomStateText}` : ''}
+          </p>
         </div>
         <button
           type="button"
@@ -76,10 +81,10 @@ export function CallPanel({
         {participants.length === 0 ? (
           <p className="text-xs text-slate-500">No active participants.</p>
         ) : (
-          participants.map((participant) => {
+          participants.map((participant, index) => {
             const mask = participant.metadata;
             const maskId = mask?.maskId ?? '';
-            const displayName = mask?.displayName ?? (participant.isLocal ? 'You' : participant.identity);
+            const displayName = mask?.displayName ?? (participant.isLocal ? 'You' : `Participant ${index + 1}`);
             const color = mask?.color ?? '#78e6da';
 
             return (
@@ -91,9 +96,9 @@ export function CallPanel({
                       <p className="text-xs font-medium text-slate-100">{displayName}</p>
                       <p className="text-[10px] uppercase tracking-[0.11em] text-slate-500">
                         {participant.isSpeaking ? 'Speaking' : 'Listening'}
-                        {' · '}
+                        {' - '}
                         {participant.cameraTrack ? 'Cam' : 'No Cam'}
-                        {' · '}
+                        {' - '}
                         {participant.screenTrack ? 'Sharing' : 'No Share'}
                       </p>
                     </div>
@@ -121,3 +126,4 @@ export function CallPanel({
     </div>
   );
 }
+
