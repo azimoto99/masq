@@ -13,7 +13,7 @@ import {
   type ServerMember,
 } from '@masq/shared';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
   createServerRole,
@@ -32,8 +32,11 @@ import {
   updateServerSettings,
   updateServerRole,
 } from '../lib/api';
-import { BrandLogo } from '../components/BrandLogo';
-import { RTCPanel } from '../components/RTCPanel';
+import { CallBar } from '../components/rtc/CallBar';
+import { CallPanel } from '../components/rtc/CallPanel';
+import { DevicePickerModal } from '../components/rtc/DevicePickerModal';
+import { VideoStage } from '../components/rtc/VideoStage';
+import { useRtcSession } from '../components/rtc/useRtcSession';
 
 interface ServersPageProps {
   me: MeResponse;
@@ -64,8 +67,23 @@ const formatTimestamp = (isoDate: string) =>
 const hasPermission = (permissions: readonly ServerPermission[], permission: ServerPermission) =>
   permissions.includes(permission);
 
+const toServerGlyph = (name: string) => {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return '?';
+  }
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
+};
+
 export function ServersPage({ me }: ServersPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const params = useParams<{ serverId: string; channelId: string }>();
   const selectedServerId = params.serverId ?? null;
   const selectedChannelId = params.channelId ?? null;
@@ -121,6 +139,10 @@ export function ServersPage({ me }: ServersPageProps) {
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [memberRoleSelections, setMemberRoleSelections] = useState<Record<string, string[]>>({});
   const [saveMemberRolesPendingUserId, setSaveMemberRolesPendingUserId] = useState<string | null>(null);
+  const [contextTab, setContextTab] = useState<'members' | 'roles' | 'call'>('members');
+  const [serverDialogOpen, setServerDialogOpen] = useState(false);
+  const [serverDialogTab, setServerDialogTab] = useState<'create' | 'join'>('create');
+  const [devicePickerOpen, setDevicePickerOpen] = useState(false);
 
   const selectedChannel = useMemo(
     () => serverDetails?.channels.find((channel) => channel.id === selectedChannelId) ?? null,
@@ -147,10 +169,30 @@ export function ServersPage({ me }: ServersPageProps) {
   );
   const currentChannelMaskId = myChannelMember?.mask.maskId ?? myServerMember?.serverMask.id ?? '';
   const canModerateRtc = myServerMember?.role === 'OWNER' || myServerMember?.role === 'ADMIN';
+  const rtc = useRtcSession({
+    contextType: 'SERVER_CHANNEL',
+    contextId: selectedChannel?.id ?? null,
+    maskId: currentChannelMaskId || null,
+    actorMaskId: currentChannelMaskId || null,
+    canModerate: canModerateRtc,
+    canEndCall: canModerateRtc,
+    disabled: !selectedChannel || !currentChannelMaskId,
+  });
+  const showVideoStage = rtc.hasVisualMedia;
 
   const onlineUserIds = useMemo(
     () => new Set(channelMembers.map((member) => member.userId)),
     [channelMembers],
+  );
+
+  const railItems = useMemo(
+    () => [
+      { to: '/servers', label: 'Servers', glyph: 'S' },
+      { to: '/friends', label: 'Friends', glyph: 'F' },
+      { to: '/dm', label: 'DMs', glyph: 'D' },
+      { to: '/rooms', label: 'Rooms', glyph: 'R' },
+    ],
+    [],
   );
 
   useEffect(() => {
@@ -255,6 +297,12 @@ export function ServersPage({ me }: ServersPageProps) {
       ),
     );
   }, [serverDetails]);
+
+  useEffect(() => {
+    if (contextTab === 'roles' && !canManageMembers) {
+      setContextTab('members');
+    }
+  }, [canManageMembers, contextTab]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -376,6 +424,7 @@ export function ServersPage({ me }: ServersPageProps) {
       const response = await createServer({ name: createServerName });
       await reloadServers();
       navigate(`/servers/${response.server.id}`);
+      setServerDialogOpen(false);
     } catch (err) {
       setServersError(err instanceof ApiError ? err.message : 'Failed to create server');
     } finally {
@@ -400,6 +449,7 @@ export function ServersPage({ me }: ServersPageProps) {
       setInviteCodeInput('');
       await reloadServers();
       navigate(`/servers/${response.serverId}`);
+      setServerDialogOpen(false);
     } catch (err) {
       setServersError(err instanceof ApiError ? err.message : 'Failed to join server');
     } finally {
@@ -653,276 +703,251 @@ export function ServersPage({ me }: ServersPageProps) {
     setComposerBody('');
   };
 
+  const persistedMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY);
+  const railMask = me.masks.find((mask) => mask.id === persistedMaskId) ?? me.masks[0] ?? null;
+  const canJoinRtc = Boolean(selectedChannel && currentChannelMaskId);
+  const isConnectedRtc = rtc.connectionState === 'connected' || rtc.connectionState === 'reconnecting';
+
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
-      <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <BrandLogo />
-            <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Persistent Spaces</p>
-            <h1 className="mt-3 text-3xl font-semibold text-white">Servers & Channels</h1>
-            <p className="mt-2 text-sm text-slate-400">Persistent guilds with server-scoped mask identity.</p>
-          </div>
-
-          <div className="flex gap-2">
-            <Link
-              to="/masks"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Masks
-            </Link>
-            <Link
-              to="/friends"
-              className="rounded-lg border border-ink-700 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Friends
-            </Link>
-            <Link
-              to="/rooms"
-              className="rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-neon-300 transition hover:border-neon-400 hover:text-white"
-            >
-              Rooms
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <section className="grid gap-6 lg:grid-cols-[340px,1fr]">
-        <aside className="space-y-4 rounded-3xl border border-ink-700 bg-ink-800/80 p-4">
-          <form onSubmit={onCreateServer} className="space-y-2 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Create Server</h2>
-            <input
-              className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-              value={createServerName}
-              onChange={(event) => setCreateServerName(event.target.value)}
-              maxLength={80}
-              required
-            />
-            <button
-              type="submit"
-              disabled={createServerPending || me.masks.length === 0}
-              className="w-full rounded-xl border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {createServerPending ? 'Creating...' : 'Create'}
-            </button>
-          </form>
-
-          <form onSubmit={onJoinServer} className="space-y-2 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Join Server</h2>
-            <input
-              className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus:border-neon-400"
-              value={inviteCodeInput}
-              onChange={(event) => setInviteCodeInput(event.target.value)}
-              placeholder="INVITECODE"
-              required
-            />
-            <select
-              className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-              value={inviteMaskId}
-              onChange={(event) => setInviteMaskId(event.target.value)}
-            >
-              {me.masks.map((mask) => (
-                <option key={mask.id} value={mask.id}>
-                  {mask.displayName}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={joinPending || !inviteMaskId}
-              className="w-full rounded-xl border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {joinPending ? 'Joining...' : 'Join'}
-            </button>
-          </form>
-
-          <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Your Servers</h2>
-            <div className="mt-3 space-y-2">
-              {serversLoading ? <p className="text-xs text-slate-500">Loading...</p> : null}
-              {!serversLoading && servers.length === 0 ? (
-                <p className="text-xs text-slate-500">No servers yet.</p>
-              ) : null}
-              {servers.map((item) => (
-                <button
-                  key={item.server.id}
-                  type="button"
-                  onClick={() => navigate(`/servers/${item.server.id}`)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left text-xs transition ${
-                    selectedServerId === item.server.id
-                      ? 'border-neon-400/60 bg-neon-400/10 text-white'
-                      : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600'
-                  }`}
-                >
-                  <div className="font-medium">{item.server.name}</div>
-                  <div className="mt-1 text-[10px] uppercase tracking-[0.15em] text-slate-500">
-                    {item.role} - {item.serverMask.displayName}
-                  </div>
-                </button>
-              ))}
+    <>
+      <div className="mx-auto w-full max-w-[1520px]">
+        <div className="grid gap-3 xl:grid-cols-[64px_260px_minmax(0,1fr)_320px]">
+          <aside className="masq-surface border border-ink-700 bg-ink-800/85 p-2 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-3rem)] xl:flex-col">
+            <div className="mb-2 flex items-center justify-between gap-2 xl:block">
+              <Link
+                to="/home"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-ink-700 bg-ink-900 transition hover:border-neon-400/50"
+                aria-label="Masq home"
+              >
+                <img src="/icon.png" alt="Masq" className="h-7 w-7 object-contain" />
+              </Link>
             </div>
-          </div>
 
-          {serversError ? (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-              {serversError}
-            </div>
-          ) : null}
-        </aside>
+            <nav className="grid flex-1 grid-cols-4 gap-2 xl:grid-cols-1">
+              {railItems.map((item) => {
+                const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    title={item.label}
+                    className={`flex h-11 items-center justify-center rounded-xl border text-xs font-semibold uppercase tracking-[0.12em] transition ${
+                      active
+                        ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-neon-100'
+                        : 'border-ink-700 bg-ink-900/75 text-slate-400 hover:border-slate-500 hover:text-slate-100'
+                    }`}
+                  >
+                    {item.glyph}
+                  </Link>
+                );
+              })}
+            </nav>
 
-        <div className="rounded-3xl border border-ink-700 bg-ink-800/80 p-5">
-          {!selectedServerId ? (
-            <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
-              Select a server from the left or create a new one.
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-ink-700 bg-ink-900/80 p-2 xl:block">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: railMask?.color ?? '#78e6da' }}
+                />
+                <span className="truncate text-[11px] uppercase tracking-[0.12em] text-slate-400">
+                  {railMask?.displayName ?? 'No Mask'}
+                </span>
+              </div>
+              <Link
+                to="/masks"
+                className="rounded-md border border-ink-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+              >
+                Settings
+              </Link>
             </div>
-          ) : detailsLoading ? (
-            <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
-              Loading server...
-            </div>
-          ) : !serverDetails ? (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {detailsError ?? 'Server unavailable'}
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[240px,1fr,260px]">
-              <aside className="space-y-3 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-                <h2 className="text-sm font-semibold text-white">{serverDetails.server.name}</h2>
-                <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500">
-                  {myServerMember ? `${myServerMember.role} - mask ${myServerMember.serverMask.displayName}` : 'No membership'}
-                </p>
+          </aside>
 
-                {myServerMember ? (
-                  <div>
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.15em] text-slate-500">
-                      Server Mask
-                    </label>
-                    <select
-                      className="w-full rounded-xl border border-ink-700 bg-ink-900 px-2 py-2 text-sm text-white focus:border-neon-400"
-                      value={myServerMember.serverMask.id}
-                      onChange={(event) => {
-                        void onChangeServerMask(event.target.value);
-                      }}
-                      disabled={maskChangePending}
-                    >
-                      {me.masks.map((mask) => (
-                        <option key={mask.id} value={mask.id}>
-                          {mask.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-
+          <aside className="masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+            <div className="flex h-full flex-col gap-3">
+              <div className="flex items-center justify-between gap-2">
                 <div>
-                  <label className="mb-1 block text-[10px] uppercase tracking-[0.15em] text-slate-500">
-                    Channel Identity Mode
-                  </label>
-                  <select
-                    className="w-full rounded-xl border border-ink-700 bg-ink-900 px-2 py-2 text-sm text-white focus:border-neon-400"
-                    value={channelIdentityMode}
-                    onChange={(event) => {
-                      void onUpdateChannelIdentityMode(event.target.value as 'SERVER_MASK' | 'CHANNEL_MASK');
-                    }}
-                    disabled={!canManageMembers || settingsPending}
-                  >
-                    <option value="SERVER_MASK">SERVER_MASK</option>
-                    <option value="CHANNEL_MASK">CHANNEL_MASK</option>
-                  </select>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Servers</p>
+                  <h1 className="text-base font-semibold text-white">Your Guilds</h1>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServerDialogTab('create');
+                    setServerDialogOpen(true);
+                  }}
+                  className="rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400"
+                >
+                  Create / Join
+                </button>
+              </div>
 
-                {canManageInvites ? (
+              {serversLoading ? <p className="text-xs text-slate-500">Loading servers...</p> : null}
+              {!serversLoading && servers.length === 0 ? (
+                <p className="rounded-lg border border-ink-700 bg-ink-900/75 px-2 py-2 text-xs text-slate-500">
+                  No servers yet.
+                </p>
+              ) : null}
+
+              <div className="space-y-2 overflow-y-auto">
+                {servers.map((item) => (
                   <button
+                    key={item.server.id}
                     type="button"
-                    onClick={() => {
-                      void onCreateInvite();
-                    }}
-                    disabled={createInvitePending}
-                    className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-xs uppercase tracking-[0.15em] text-neon-300 hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => navigate(`/servers/${item.server.id}`)}
+                    className={`w-full rounded-xl border px-2.5 py-2 text-left transition ${
+                      selectedServerId === item.server.id
+                        ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-white'
+                        : 'border-ink-700 bg-ink-900/70 text-slate-300 hover:border-slate-600 hover:text-white'
+                    }`}
                   >
-                    {createInvitePending ? 'Creating Invite...' : 'Create Invite'}
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-ink-700 bg-ink-800 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-200">
+                        {toServerGlyph(item.server.name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{item.server.name}</p>
+                        <p className="truncate text-[10px] uppercase tracking-[0.11em] text-slate-500">
+                          {item.role} - {item.serverMask.displayName}
+                        </p>
+                      </div>
+                    </div>
                   </button>
-                ) : null}
+                ))}
+              </div>
 
-                {latestInviteCode ? (
-                  <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-2 py-2 text-xs text-cyan-200">
-                    Invite code: <span className="font-mono">{latestInviteCode}</span>
+              {selectedServerId && serverDetails ? (
+                <div className="mt-auto space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Active Server</p>
+                    <p className="truncate text-sm font-medium text-white">{serverDetails.server.name}</p>
+                    <p className="truncate text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                      {myServerMember
+                        ? `${myServerMember.role} - ${myServerMember.serverMask.displayName}`
+                        : 'No membership'}
+                    </p>
                   </div>
-                ) : null}
 
-                <div className="rounded-xl border border-ink-700 bg-ink-800/80 p-3">
-                  <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500">Channels</p>
-                  <div className="mt-2 space-y-2">
-                    {serverDetails.channels.map((channel) => (
-                      <div key={channel.id} className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/servers/${serverDetails.server.id}/${channel.id}`)}
-                          className={`flex-1 rounded-md border px-2 py-1 text-left text-xs ${
-                            selectedChannel?.id === channel.id
-                              ? 'border-neon-400/60 bg-neon-400/10 text-white'
-                              : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600'
-                          }`}
-                        >
-                          # {channel.name}
-                        </button>
-                        {canManageChannels ? (
+                  {myServerMember ? (
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                        Server Mask
+                      </span>
+                      <select
+                        className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
+                        value={myServerMember.serverMask.id}
+                        onChange={(event) => {
+                          void onChangeServerMask(event.target.value);
+                        }}
+                        disabled={maskChangePending}
+                      >
+                        {me.masks.map((mask) => (
+                          <option key={mask.id} value={mask.id}>
+                            {mask.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Channels</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      {serverDetails.channels.map((channel) => (
+                        <div key={channel.id} className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => {
-                              void onDeleteChannel(channel.id);
-                            }}
-                            disabled={deleteChannelPendingId === channel.id}
-                            className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => navigate(`/servers/${serverDetails.server.id}/${channel.id}`)}
+                            className={`flex-1 rounded-md border px-2 py-1 text-left text-xs ${
+                              selectedChannel?.id === channel.id
+                                ? 'border-neon-400/45 bg-neon-400/10 text-white'
+                                : 'border-ink-700 bg-ink-900/80 text-slate-300 hover:border-slate-600'
+                            }`}
                           >
-                            Del
+                            # {channel.name}
                           </button>
-                        ) : null}
-                      </div>
-                    ))}
+                          {canManageChannels ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void onDeleteChannel(channel.id);
+                              }}
+                              disabled={deleteChannelPendingId === channel.id}
+                              className="rounded-md border border-rose-500/40 bg-rose-500/10 px-1.5 py-1 text-[10px] uppercase tracking-[0.11em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Del
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
                   </div>
+
+                  {canManageChannels ? (
+                    <form onSubmit={onCreateChannel} className="space-y-1.5">
+                      <input
+                        className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
+                        value={createChannelName}
+                        onChange={(event) => setCreateChannelName(event.target.value)}
+                        maxLength={60}
+                        required
+                      />
+                      <button
+                        type="submit"
+                        disabled={createChannelPending}
+                        className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {createChannelPending ? 'Creating...' : 'New Channel'}
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
+              ) : null}
 
-                {canManageChannels ? (
-                  <form onSubmit={onCreateChannel} className="space-y-2 rounded-xl border border-ink-700 bg-ink-800/80 p-3">
-                    <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500">New Channel</p>
-                    <input
-                      className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-                      value={createChannelName}
-                      onChange={(event) => setCreateChannelName(event.target.value)}
-                      maxLength={60}
-                      required
-                    />
-                    <button
-                      type="submit"
-                      disabled={createChannelPending}
-                      className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-xs uppercase tracking-[0.15em] text-neon-300 hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {createChannelPending ? 'Creating...' : 'Create'}
-                    </button>
-                  </form>
-                ) : null}
-              </aside>
+              {serversError ? (
+                <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-200">
+                  {serversError}
+                </div>
+              ) : null}
+            </div>
+          </aside>
 
-              <section className="space-y-4 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-                {!selectedChannel ? (
-                  <div className="rounded-xl border border-ink-700 bg-ink-800/70 p-4 text-sm text-slate-400">
-                    Select a channel to start chatting.
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <h3 className="text-lg font-semibold text-white"># {selectedChannel.name}</h3>
-                      <p className="text-xs uppercase tracking-[0.15em] text-slate-500">
-                        {socketStatus} -{' '}
-                        {isChannelMaskMode
-                          ? 'mask identity can vary per channel'
-                          : 'mask identity derived from server membership'}
-                      </p>
+          <main className="masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+            <div className="flex h-full flex-col gap-3">
+              {!selectedServerId ? (
+                <div className="flex h-full items-center justify-center rounded-xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
+                  Select a server or create one to start chatting.
+                </div>
+              ) : detailsLoading ? (
+                <div className="flex h-full items-center justify-center rounded-xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
+                  Loading server...
+                </div>
+              ) : !serverDetails ? (
+                <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                  {detailsError ?? 'Server unavailable'}
+                </div>
+              ) : !selectedChannel ? (
+                <div className="flex h-full items-center justify-center rounded-xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
+                  Select a channel from the server sidebar.
+                </div>
+              ) : (
+                <>
+                  <header className="rounded-xl border border-ink-700 bg-ink-900/70 px-3 py-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <h2 className="text-lg font-semibold text-white"># {selectedChannel.name}</h2>
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                          {socketStatus} - {isChannelMaskMode ? 'Channel mask mode' : 'Server mask mode'}
+                        </p>
+                      </div>
                       {isChannelMaskMode ? (
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Speaking as:</span>
+                        <label className="block">
+                          <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                            Speaking As
+                          </span>
                           <select
-                            className="rounded-lg border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
+                            className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
                             value={currentChannelMaskId}
                             onChange={(event) => {
                               void onChangeChannelMask(event.target.value);
@@ -935,287 +960,566 @@ export function ServersPage({ me }: ServersPageProps) {
                               </option>
                             ))}
                           </select>
-                        </div>
+                        </label>
                       ) : null}
                     </div>
+                  </header>
 
-                    <RTCPanel
-                      title="Channel RTC"
-                      contextType="SERVER_CHANNEL"
-                      contextId={selectedChannel.id}
-                      maskId={currentChannelMaskId || null}
-                      actorMaskId={currentChannelMaskId || null}
-                      canModerate={canModerateRtc}
-                      canEndCall={canModerateRtc}
-                      disabled={!currentChannelMaskId}
-                      disabledReason={currentChannelMaskId ? undefined : 'Select a channel mask before joining call.'}
+                  <CallBar
+                    connectionState={rtc.connectionState}
+                    sessionId={rtc.sessionId}
+                    canJoin={rtc.canJoin}
+                    micEnabled={rtc.micEnabled}
+                    cameraEnabled={rtc.cameraEnabled}
+                    screenEnabled={rtc.screenEnabled}
+                    deafened={rtc.deafened}
+                    selfServerMuted={rtc.selfServerMuted}
+                    speakingCount={rtc.speakingCount}
+                    hasActiveScreenShare={Boolean(rtc.activeScreenShare)}
+                    error={rtc.error}
+                    disabledReason={canJoinRtc ? undefined : 'Select a channel mask before joining call.'}
+                    canEndCall={rtc.canEndCall}
+                    onJoin={() => {
+                      void rtc.joinCall();
+                    }}
+                    onLeave={() => {
+                      void rtc.leaveCall();
+                    }}
+                    onToggleMic={() => {
+                      void rtc.toggleMic();
+                    }}
+                    onToggleCamera={() => {
+                      void rtc.toggleCamera();
+                    }}
+                    onToggleScreenShare={() => {
+                      void rtc.toggleScreenShare();
+                    }}
+                    onToggleDeafened={rtc.toggleDeafened}
+                    onOpenDevices={() => {
+                      setDevicePickerOpen(true);
+                    }}
+                    onEndCall={() => {
+                      void rtc.endCall();
+                    }}
+                  />
+
+                  {showVideoStage ? (
+                    <VideoStage
+                      participants={rtc.participants}
+                      activeScreenShare={rtc.activeScreenShare}
+                      deafened={rtc.deafened}
+                      canModerate={rtc.canModerate}
+                      onMuteParticipant={(targetMaskId) => {
+                        void rtc.muteParticipant(targetMaskId);
+                      }}
                     />
+                  ) : null}
 
-                    <div
-                      ref={messageListRef}
-                      className="h-[430px] overflow-y-auto rounded-xl border border-ink-700 bg-ink-800/70 p-3"
-                    >
-                      <div className="space-y-3">
-                        {channelMessages.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
-                        {channelMessages.map((message) => (
-                          <article key={message.id} className="rounded-lg border border-ink-700 bg-ink-900/70 p-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: message.mask.color }} />
-                                <span className="font-medium text-white">{message.mask.displayName}</span>
-                                <span className="text-xs text-slate-500">{message.mask.avatarSeed}</span>
-                              </div>
-                              <span className="text-xs text-slate-500">{formatTimestamp(message.createdAt)}</span>
+                  <div
+                    ref={messageListRef}
+                    className={`flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-2.5 ${
+                      showVideoStage ? 'min-h-[220px]' : 'min-h-[420px]'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      {channelMessages.length === 0 ? (
+                        <p className="px-2 py-1 text-sm text-slate-500">No messages yet.</p>
+                      ) : null}
+                      {channelMessages.map((message) => (
+                        <article key={message.id} className="rounded-lg border border-ink-700 bg-ink-800/70 p-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <span
+                                className="inline-block h-2.5 w-2.5 rounded-full"
+                                style={{ backgroundColor: message.mask.color }}
+                              />
+                              <span className="font-medium text-white">{message.mask.displayName}</span>
+                              <span className="text-xs text-slate-500">{message.mask.avatarSeed}</span>
                             </div>
-                            <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                            <span className="text-xs text-slate-500">{formatTimestamp(message.createdAt)}</span>
+                          </div>
+                          <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-slate-200">{message.body}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  <form onSubmit={onSendMessage} className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+                    <textarea
+                      className="h-20 w-full resize-none rounded-lg border border-ink-700 bg-ink-900 px-2.5 py-2 text-sm text-white focus:border-neon-400"
+                      value={composerBody}
+                      onChange={(event) => setComposerBody(event.target.value)}
+                      placeholder="Speak as your selected mask"
+                      maxLength={MAX_ROOM_MESSAGE_LENGTH}
+                      disabled={socketStatus !== 'connected'}
+                    />
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-xs text-slate-500">
+                        {composerBody.length}/{MAX_ROOM_MESSAGE_LENGTH}
+                      </p>
+                      <button
+                        type="submit"
+                        disabled={socketStatus !== 'connected'}
+                        className="rounded-md border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
+
+              {detailsError ? (
+                <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-2.5 py-2 text-xs text-rose-200">
+                  {detailsError}
+                </div>
+              ) : null}
+
+              {socketError ? (
+                <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-2.5 py-2 text-xs text-rose-200">
+                  {socketError}
+                </div>
+              ) : null}
+            </div>
+          </main>
+
+          <aside className="masq-surface border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+            <div className="flex h-full flex-col gap-3">
+              {!selectedServerId || !serverDetails ? (
+                <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3 text-sm text-slate-500">
+                  Select a server to view members, roles, and call details.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-1 rounded-xl border border-ink-700 bg-ink-900/70 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setContextTab('members')}
+                      className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition ${
+                        contextTab === 'members'
+                          ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
+                          : 'border border-transparent text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Members
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setContextTab('roles')}
+                      disabled={!canManageMembers}
+                      className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        contextTab === 'roles'
+                          ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
+                          : 'border border-transparent text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Roles
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setContextTab('call')}
+                      className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition ${
+                        contextTab === 'call'
+                          ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
+                          : 'border border-transparent text-slate-400 hover:text-slate-200'
+                      } ${isConnectedRtc ? 'masq-live-ring' : ''}`}
+                    >
+                      Call
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto">
+                    {contextTab === 'members' ? (
+                      <div className="space-y-2">
+                        {serverDetails.members.map((member) => (
+                          <article key={member.userId} className="rounded-lg border border-ink-700 bg-ink-900/75 p-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className="inline-block h-2.5 w-2.5 rounded-full"
+                                  style={{ backgroundColor: member.serverMask.color }}
+                                />
+                                <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
+                              </div>
+                              <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                                {member.role}
+                              </span>
+                            </div>
+                            <p className="mt-1 truncate text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                              {member.serverMask.avatarSeed} - {onlineUserIds.has(member.userId) ? 'online in channel' : 'offline'}
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-400">
+                              Roles:{' '}
+                              {member.roleIds.length === 0
+                                ? 'none'
+                                : member.roleIds
+                                    .map((roleId) => serverRoles.find((role) => role.id === roleId)?.name ?? 'unknown')
+                                    .join(', ')}
+                            </p>
+
+                            {canManageMembers && member.role !== 'OWNER' ? (
+                              <div className="mt-2 rounded-md border border-ink-700 bg-ink-800/80 p-2">
+                                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Assign Roles</p>
+                                <div className="mt-1 space-y-1">
+                                  {serverRoles.map((role) => {
+                                    const selected = memberRoleSelections[member.userId] ?? member.roleIds;
+                                    const checked = selected.includes(role.id);
+                                    return (
+                                      <label key={role.id} className="flex items-center gap-2 text-[11px] text-slate-300">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            setMemberRoleSelections((current) => {
+                                              const currentRoleIds = current[member.userId] ?? member.roleIds;
+                                              const nextRoleIds = currentRoleIds.includes(role.id)
+                                                ? currentRoleIds.filter((value) => value !== role.id)
+                                                : [...currentRoleIds, role.id];
+                                              return {
+                                                ...current,
+                                                [member.userId]: nextRoleIds,
+                                              };
+                                            });
+                                          }}
+                                        />
+                                        <span>{role.name}</span>
+                                      </label>
+                                    );
+                                  })}
+                                  {serverRoles.length === 0 ? (
+                                    <p className="text-[11px] text-slate-500">No custom roles yet.</p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void onSaveMemberRoles(member.userId);
+                                  }}
+                                  disabled={saveMemberRolesPendingUserId === member.userId}
+                                  className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {saveMemberRolesPendingUserId === member.userId ? 'Saving...' : 'Save Roles'}
+                                </button>
+                              </div>
+                            ) : null}
+
+                            {canKickMember(member) ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void onKickMember(member.userId);
+                                }}
+                                disabled={kickPendingUserId === member.userId}
+                                className="mt-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Kick
+                              </button>
+                            ) : null}
                           </article>
                         ))}
                       </div>
-                    </div>
+                    ) : null}
 
-                    <form onSubmit={onSendMessage} className="rounded-xl border border-ink-700 bg-ink-800/70 p-3">
-                      <textarea
-                        className="h-24 w-full resize-none rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-                        value={composerBody}
-                        onChange={(event) => setComposerBody(event.target.value)}
-                        placeholder="Speak as your server mask"
-                        maxLength={MAX_ROOM_MESSAGE_LENGTH}
-                        disabled={socketStatus !== 'connected'}
-                      />
-                      <div className="mt-2 flex items-center justify-between">
-                        <p className="text-xs text-slate-500">
-                          {composerBody.length}/{MAX_ROOM_MESSAGE_LENGTH}
-                        </p>
-                        <button
-                          type="submit"
-                          disabled={socketStatus !== 'connected'}
-                          className="rounded-xl border border-neon-400/40 bg-neon-400/10 px-4 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Send
-                        </button>
-                      </div>
-                    </form>
-                  </>
-                )}
-              </section>
-
-              <aside className="space-y-4 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-                <div>
-                  <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500">Members</h3>
-                  <div className="mt-3 space-y-2">
-                    {serverDetails.members.map((member) => (
-                      <div key={member.userId} className="rounded-xl border border-ink-700 bg-ink-800/80 p-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="inline-block h-3 w-3 rounded-full"
-                            style={{ backgroundColor: member.serverMask.color }}
-                          />
-                          <p className="text-sm font-medium text-white">{member.serverMask.displayName}</p>
-                          <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                            {member.role}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                          {member.serverMask.avatarSeed} -{' '}
-                          {onlineUserIds.has(member.userId) ? 'online in channel' : 'offline'}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          Roles:{' '}
-                          {member.roleIds.length === 0
-                            ? 'none'
-                            : member.roleIds
-                                .map((roleId) => serverRoles.find((role) => role.id === roleId)?.name ?? 'unknown')
-                                .join(', ')}
-                        </p>
-
-                        {canManageMembers && member.role !== 'OWNER' ? (
-                          <div className="mt-2 rounded-lg border border-ink-700 bg-ink-900/70 p-2">
-                            <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Assign Roles</p>
-                            <div className="mt-1 space-y-1">
-                              {serverRoles.map((role) => {
-                                const selected = memberRoleSelections[member.userId] ?? member.roleIds;
-                                const checked = selected.includes(role.id);
-                                return (
-                                  <label key={role.id} className="flex items-center gap-2 text-[11px] text-slate-300">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => {
-                                        setMemberRoleSelections((current) => {
-                                          const currentRoleIds = current[member.userId] ?? member.roleIds;
-                                          const nextRoleIds = currentRoleIds.includes(role.id)
-                                            ? currentRoleIds.filter((value) => value !== role.id)
-                                            : [...currentRoleIds, role.id];
-                                          return {
-                                            ...current,
-                                            [member.userId]: nextRoleIds,
-                                          };
-                                        });
-                                      }}
-                                    />
-                                    <span>{role.name}</span>
-                                  </label>
-                                );
-                              })}
-                              {serverRoles.length === 0 ? (
-                                <p className="text-[11px] text-slate-500">No custom roles yet.</p>
-                              ) : null}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void onSaveMemberRoles(member.userId);
-                              }}
-                              disabled={saveMemberRolesPendingUserId === member.userId}
-                              className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {saveMemberRolesPendingUserId === member.userId ? 'Saving...' : 'Save Roles'}
-                            </button>
-                          </div>
+                    {contextTab === 'roles' ? (
+                      <div className="space-y-2">
+                        {rolesLoading ? <p className="text-xs text-slate-500">Loading roles...</p> : null}
+                        {rolesError ? (
+                          <p className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
+                            {rolesError}
+                          </p>
                         ) : null}
-
-                        {canKickMember(member) ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void onKickMember(member.userId);
-                            }}
-                            disabled={kickPendingUserId === member.userId}
-                            className="mt-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Kick
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-ink-700 bg-ink-800/80 p-3">
-                  <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500">Role Manager</h3>
-                  {rolesLoading ? <p className="mt-2 text-xs text-slate-500">Loading roles...</p> : null}
-                  {rolesError ? (
-                    <p className="mt-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
-                      {rolesError}
-                    </p>
-                  ) : null}
-                  {!canManageMembers ? (
-                    <p className="mt-2 text-xs text-slate-500">ManageMembers permission required.</p>
-                  ) : (
-                    <>
-                      <form onSubmit={onCreateRole} className="mt-2 space-y-2 rounded-lg border border-ink-700 bg-ink-900/70 p-2">
-                        <input
-                          className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-                          value={createRoleName}
-                          onChange={(event) => setCreateRoleName(event.target.value)}
-                          placeholder="Role name"
-                          maxLength={40}
-                          required
-                        />
-                        <div className="grid grid-cols-2 gap-1">
-                          {ALL_SERVER_PERMISSIONS.map((permission) => (
-                            <label key={permission} className="flex items-center gap-1 text-[11px] text-slate-300">
-                              <input
-                                type="checkbox"
-                                checked={createRolePermissions.includes(permission)}
-                                onChange={() =>
-                                  setCreateRolePermissions((current) => togglePermission(current, permission))
-                                }
-                              />
-                              <span>{permission}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={createRolePending}
-                          className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-neon-300 hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {createRolePending ? 'Creating...' : 'Create Role'}
-                        </button>
-                      </form>
-
-                      <div className="mt-2 space-y-2">
-                        {serverRoles.map((role) => {
-                          const draft = roleDrafts[role.id] ?? {
-                            name: role.name,
-                            permissions: [...role.permissions],
-                          };
-
-                          return (
-                            <div key={role.id} className="rounded-lg border border-ink-700 bg-ink-900/70 p-2">
+                        {!canManageMembers ? (
+                          <p className="text-xs text-slate-500">ManageMembers permission required.</p>
+                        ) : (
+                          <>
+                            <form onSubmit={onCreateRole} className="space-y-2 rounded-lg border border-ink-700 bg-ink-900/75 p-2">
                               <input
                                 className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-                                value={draft.name}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setRoleDrafts((current) => ({
-                                    ...current,
-                                    [role.id]: {
-                                      name: value,
-                                      permissions: current[role.id]?.permissions ?? [...role.permissions],
-                                    },
-                                  }));
-                                }}
+                                value={createRoleName}
+                                onChange={(event) => setCreateRoleName(event.target.value)}
+                                placeholder="Role name"
                                 maxLength={40}
+                                required
                               />
-                              <div className="mt-2 grid grid-cols-2 gap-1">
+                              <div className="grid grid-cols-2 gap-1">
                                 {ALL_SERVER_PERMISSIONS.map((permission) => (
                                   <label key={permission} className="flex items-center gap-1 text-[11px] text-slate-300">
                                     <input
                                       type="checkbox"
-                                      checked={draft.permissions.includes(permission)}
-                                      onChange={() => {
-                                        setRoleDrafts((current) => ({
-                                          ...current,
-                                          [role.id]: {
-                                            name: current[role.id]?.name ?? role.name,
-                                            permissions: togglePermission(
-                                              current[role.id]?.permissions ?? role.permissions,
-                                              permission,
-                                            ),
-                                          },
-                                        }));
-                                      }}
+                                      checked={createRolePermissions.includes(permission)}
+                                      onChange={() =>
+                                        setCreateRolePermissions((current) => togglePermission(current, permission))
+                                      }
                                     />
                                     <span>{permission}</span>
                                   </label>
                                 ))}
                               </div>
                               <button
-                                type="button"
-                                onClick={() => {
-                                  void onSaveRole(role.id);
-                                }}
-                                disabled={savingRoleId === role.id}
-                                className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                type="submit"
+                                disabled={createRolePending}
+                                className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {savingRoleId === role.id ? 'Saving...' : 'Save'}
+                                {createRolePending ? 'Creating...' : 'Create Role'}
                               </button>
-                            </div>
-                          );
-                        })}
+                            </form>
+
+                            {serverRoles.map((role) => {
+                              const draft = roleDrafts[role.id] ?? {
+                                name: role.name,
+                                permissions: [...role.permissions],
+                              };
+
+                              return (
+                                <article key={role.id} className="rounded-lg border border-ink-700 bg-ink-900/75 p-2">
+                                  <input
+                                    className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
+                                    value={draft.name}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      setRoleDrafts((current) => ({
+                                        ...current,
+                                        [role.id]: {
+                                          name: value,
+                                          permissions: current[role.id]?.permissions ?? [...role.permissions],
+                                        },
+                                      }));
+                                    }}
+                                    maxLength={40}
+                                  />
+                                  <div className="mt-2 grid grid-cols-2 gap-1">
+                                    {ALL_SERVER_PERMISSIONS.map((permission) => (
+                                      <label key={permission} className="flex items-center gap-1 text-[11px] text-slate-300">
+                                        <input
+                                          type="checkbox"
+                                          checked={draft.permissions.includes(permission)}
+                                          onChange={() => {
+                                            setRoleDrafts((current) => ({
+                                              ...current,
+                                              [role.id]: {
+                                                name: current[role.id]?.name ?? role.name,
+                                                permissions: togglePermission(
+                                                  current[role.id]?.permissions ?? role.permissions,
+                                                  permission,
+                                                ),
+                                              },
+                                            }));
+                                          }}
+                                        />
+                                        <span>{permission}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void onSaveRole(role.id);
+                                    }}
+                                    disabled={savingRoleId === role.id}
+                                    className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {savingRoleId === role.id ? 'Saving...' : 'Save'}
+                                  </button>
+                                </article>
+                              );
+                            })}
+                          </>
+                        )}
                       </div>
-                    </>
-                  )}
-                </div>
-              </aside>
-            </div>
-          )}
+                    ) : null}
 
-          {detailsError ? (
-            <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {detailsError}
+                    {contextTab === 'call' ? (
+                      selectedChannel ? (
+                        <CallPanel
+                          connectionState={rtc.connectionState}
+                          sessionId={rtc.sessionId}
+                          roomName={rtc.livekitRoomName}
+                          participants={rtc.participants}
+                          canJoin={rtc.canJoin}
+                          canModerate={rtc.canModerate}
+                          onJoin={() => {
+                            void rtc.joinCall();
+                          }}
+                          onLeave={() => {
+                            void rtc.leaveCall();
+                          }}
+                          onMuteParticipant={(targetMaskId) => {
+                            void rtc.muteParticipant(targetMaskId);
+                          }}
+                        />
+                      ) : (
+                        <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3 text-xs text-slate-500">
+                          Select a channel to open call controls.
+                        </div>
+                      )
+                    ) : null}
+                  </div>
+                </>
+              )}
             </div>
-          ) : null}
+          </aside>
+        </div>
+      </div>
 
-          {socketError ? (
-            <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {socketError}
+      <DevicePickerModal
+        open={devicePickerOpen}
+        devices={rtc.devices}
+        onClose={() => {
+          setDevicePickerOpen(false);
+        }}
+        onRefresh={() => {
+          void rtc.refreshDevices();
+        }}
+        onSelectDevice={(kind, deviceId) => {
+          void rtc.setPreferredDevice(kind, deviceId);
+        }}
+      />
+
+      {serverDialogOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
+          <div className="masq-surface w-full max-w-xl rounded-2xl border border-ink-700 bg-ink-900 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-base font-semibold text-white">Server Access</h2>
+              <button
+                type="button"
+                onClick={() => setServerDialogOpen(false)}
+                className="rounded-md border border-ink-700 px-2 py-1 text-xs uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+              >
+                Close
+              </button>
             </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg border border-ink-700 bg-ink-800/70 p-1">
+              <button
+                type="button"
+                onClick={() => setServerDialogTab('create')}
+                className={`rounded-md px-2 py-1 text-xs uppercase tracking-[0.12em] ${
+                  serverDialogTab === 'create'
+                    ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
+                    : 'border border-transparent text-slate-400'
+                }`}
+              >
+                Create
+              </button>
+              <button
+                type="button"
+                onClick={() => setServerDialogTab('join')}
+                className={`rounded-md px-2 py-1 text-xs uppercase tracking-[0.12em] ${
+                  serverDialogTab === 'join'
+                    ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
+                    : 'border border-transparent text-slate-400'
+                }`}
+              >
+                Join
+              </button>
+            </div>
+
+            {serverDialogTab === 'create' ? (
+              <form onSubmit={onCreateServer} className="mt-3 space-y-2 rounded-lg border border-ink-700 bg-ink-800/70 p-3">
+                <label className="block text-xs text-slate-400">
+                  <span className="mb-1 block uppercase tracking-[0.12em] text-slate-500">Server Name</span>
+                  <input
+                    className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1.5 text-sm text-white focus:border-neon-400"
+                    value={createServerName}
+                    onChange={(event) => setCreateServerName(event.target.value)}
+                    maxLength={80}
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={createServerPending || me.masks.length === 0}
+                  className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {createServerPending ? 'Creating...' : 'Create Server'}
+                </button>
+                {me.masks.length === 0 ? (
+                  <p className="text-xs text-amber-200">Create a mask first before creating a server.</p>
+                ) : null}
+              </form>
+            ) : (
+              <form onSubmit={onJoinServer} className="mt-3 space-y-2 rounded-lg border border-ink-700 bg-ink-800/70 p-3">
+                <label className="block text-xs text-slate-400">
+                  <span className="mb-1 block uppercase tracking-[0.12em] text-slate-500">Invite Code</span>
+                  <input
+                    className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1.5 font-mono text-sm text-white focus:border-neon-400"
+                    value={inviteCodeInput}
+                    onChange={(event) => setInviteCodeInput(event.target.value)}
+                    placeholder="INVITECODE"
+                    required
+                  />
+                </label>
+                <label className="block text-xs text-slate-400">
+                  <span className="mb-1 block uppercase tracking-[0.12em] text-slate-500">Server Mask</span>
+                  <select
+                    className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1.5 text-sm text-white focus:border-neon-400"
+                    value={inviteMaskId}
+                    onChange={(event) => setInviteMaskId(event.target.value)}
+                  >
+                    {me.masks.map((mask) => (
+                      <option key={mask.id} value={mask.id}>
+                        {mask.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  disabled={joinPending || !inviteMaskId}
+                  className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {joinPending ? 'Joining...' : 'Join Server'}
+                </button>
+              </form>
+            )}
+
+            {serversError ? (
+              <p className="mt-3 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
+                {serversError}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {selectedServerId && serverDetails && canManageInvites ? (
+        <div className="fixed bottom-4 right-4 z-40 rounded-lg border border-cyan-500/35 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30">
+          <button
+            type="button"
+            onClick={() => {
+              void onCreateInvite();
+            }}
+            disabled={createInvitePending}
+            className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {createInvitePending ? 'Creating Invite...' : 'Create Invite'}
+          </button>
+          {latestInviteCode ? (
+            <p className="mt-1 text-xs text-cyan-200">
+              Invite: <span className="font-mono">{latestInviteCode}</span>
+            </p>
           ) : null}
         </div>
-      </section>
-    </div>
+      ) : null}
+
+      {selectedServerId && serverDetails ? (
+        <div className="fixed bottom-4 left-4 z-40 rounded-lg border border-ink-700 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30">
+          <label className="block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+            Identity Mode
+          </label>
+          <select
+            className="mt-1 rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
+            value={channelIdentityMode}
+            onChange={(event) => {
+              void onUpdateChannelIdentityMode(event.target.value as 'SERVER_MASK' | 'CHANNEL_MASK');
+            }}
+            disabled={!canManageMembers || settingsPending}
+          >
+            <option value="SERVER_MASK">SERVER_MASK</option>
+            <option value="CHANNEL_MASK">CHANNEL_MASK</option>
+          </select>
+        </div>
+      ) : null}
+    </>
   );
 }
