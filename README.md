@@ -179,6 +179,7 @@ LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=
 
 # Upload storage
+# If unset on Render, API defaults to /var/data/masq-uploads.
 UPLOADS_DIR=./uploads
 MAX_IMAGE_UPLOAD_BYTES=10485760
 ```
@@ -192,7 +193,7 @@ MAX_IMAGE_UPLOAD_BYTES=10485760
 - Expose websocket upgrades for `/ws` in your reverse proxy.
 - Render hosts API/signaling; LiveKit hosts media (SFU/TURN/UDP). Do not host WebRTC media directly on Render.
 - Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on the API service.
-- For image/avatar uploads on Render, attach a persistent disk and set `UPLOADS_DIR` to that mount path (for example `/var/data/masq-uploads`).
+- For image/avatar uploads on Render, attach a persistent disk at `/var/data/masq-uploads` and either set `UPLOADS_DIR=/var/data/masq-uploads` or leave `UPLOADS_DIR` unset (the API now defaults to this path on Render).
 - Uploads are private by default: API auth is required and message images are context-authorized (server membership, DM participant, or room membership).
 - For Windows desktop builds (Tauri/Electron), allow microphone/camera/screen-capture permissions.
 
