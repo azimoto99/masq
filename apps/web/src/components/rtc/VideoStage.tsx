@@ -103,10 +103,6 @@ const SpeakerTile = ({
           </div>
         )}
 
-        {participant.audioTrack && !isSelf ? (
-          <MediaTrack track={participant.audioTrack} kind="audio" muted={deafened} />
-        ) : null}
-
         <div className="absolute left-1.5 top-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] text-white">
           {participant.isSpeaking ? 'Speaking' : 'Idle'}
         </div>
@@ -277,13 +273,6 @@ export function VideoStage({
                 kind="video"
                 muted={focusedParticipantIsSelf || deafened}
               />
-              {focusedParticipant.audioTrack && !focusedParticipantIsSelf ? (
-                <MediaTrack
-                  track={focusedParticipant.audioTrack}
-                  kind="audio"
-                  muted={deafened}
-                />
-              ) : null}
             </div>
           </div>
         ) : null}
@@ -317,13 +306,6 @@ export function VideoStage({
                   track={activeScreenShare.screenTrack}
                   kind="video"
                   muted={activeScreenShareIsSelf || deafened}
-                />
-              ) : null}
-              {activeScreenShare.audioTrack && !activeScreenShareIsSelf ? (
-                <MediaTrack
-                  track={activeScreenShare.audioTrack}
-                  kind="audio"
-                  muted={deafened}
                 />
               ) : null}
               <div className="absolute left-1.5 top-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] text-white">
@@ -387,13 +369,6 @@ export function VideoStage({
               kind="video"
               muted={focusedParticipantIsSelf || deafened}
             />
-            {focusedParticipant.audioTrack && !focusedParticipantIsSelf ? (
-              <MediaTrack
-                track={focusedParticipant.audioTrack}
-                kind="audio"
-                muted={deafened}
-              />
-            ) : null}
           </div>
         </div>
       ) : null}

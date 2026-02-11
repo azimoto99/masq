@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useRtc } from '../../rtc/RtcProvider';
 import { CallPanel } from './CallPanel';
 import { DevicePickerModal } from './DevicePickerModal';
+import { RemoteAudioLayer } from './RemoteAudioLayer';
 import { VideoStage } from './VideoStage';
 
 const connectionLabel = (state: string) => {
@@ -34,6 +35,12 @@ export function CallDock() {
 
   return (
     <>
+      <RemoteAudioLayer
+        participants={rtc.participants}
+        deafened={rtc.deafened}
+        localMaskId={rtc.activeContext?.maskId ?? null}
+      />
+
       {rtc.dockExpanded && hasContext ? (
         <section
           className="fixed left-0 right-0 z-40 px-3 sm:px-6"
