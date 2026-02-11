@@ -17,6 +17,7 @@ import {
   setDmMask,
   uploadImage,
 } from '../lib/api';
+import { createRealtimeSocket } from '../lib/realtime';
 import { MaskAvatar } from '../components/MaskAvatar';
 import { RTCPanel } from '../components/RTCPanel';
 import { SpacesSidebar } from '../components/SpacesSidebar';
@@ -26,20 +27,6 @@ interface DmPageProps {
 }
 
 const ACTIVE_MASK_STORAGE_KEY = 'masq.activeMaskId';
-
-const buildWebSocketUrl = () => {
-  const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
-  if (configuredApiUrl) {
-    const url = new URL(configuredApiUrl);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.pathname = '/ws';
-    url.search = '';
-    return url.toString();
-  }
-
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}://${window.location.host}/ws`;
-};
 
 const formatTimestamp = (isoDate: string) =>
   new Date(isoDate).toLocaleTimeString([], {
@@ -144,7 +131,16 @@ export function DmPage({ me }: DmPageProps) {
       return;
     }
 
-    const ws = new WebSocket(buildWebSocketUrl());
+    let ws: WebSocket;
+    try {
+      ws = createRealtimeSocket();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Socket URL is invalid';
+      setSocketStatus('disconnected');
+      setSocketError(`Realtime connection failed: ${message}`);
+      return;
+    }
+
     socketRef.current = ws;
     setSocketStatus('connecting');
 
