@@ -560,8 +560,10 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
         </button>
       </div>
 
-      <section className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className={`${mobileSidebarOpen ? 'block' : 'hidden'} masq-panel rounded-2xl p-3 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+      <section className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <aside
+          className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}
+        >
           <div className="flex h-full flex-col gap-3">
             <button
               type="button"
@@ -571,115 +573,121 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
               Close Spaces
             </button>
             <SpacesSidebar className="flex-1 min-h-0" activeMaskId={activeMaskId} />
-            <div>
-            <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Active Mask</label>
-            <select
-              className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-              value={activeMaskId ?? ''}
-              onChange={(event) => onSelectMask(event.target.value)}
-            >
-              {me.masks.map((mask) => (
-                <option key={mask.id} value={mask.id}>
-                  {mask.displayName}
-                </option>
-              ))}
-            </select>
-            {activeMask ? (
-              <div className="mt-2 flex items-center gap-2">
-                <MaskAvatar
-                  displayName={activeMask.displayName}
-                  color={activeMask.color}
-                  avatarUploadId={activeMask.avatarUploadId}
-                  sizeClassName="h-6 w-6"
-                  textClassName="text-[9px]"
-                />
-                <p className="text-xs text-slate-500">seed: {activeMask.avatarSeed}</p>
-              </div>
-            ) : null}
+            <div className="masq-panel-muted rounded-xl p-2.5">
+              <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                Active Mask
+              </label>
+              <select
+                className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
+                value={activeMaskId ?? ''}
+                onChange={(event) => onSelectMask(event.target.value)}
+              >
+                {me.masks.map((mask) => (
+                  <option key={mask.id} value={mask.id}>
+                    {mask.displayName}
+                  </option>
+                ))}
+              </select>
+              {activeMask ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <MaskAvatar
+                    displayName={activeMask.displayName}
+                    color={activeMask.color}
+                    avatarUploadId={activeMask.avatarUploadId}
+                    sizeClassName="h-6 w-6"
+                    textClassName="text-[9px]"
+                  />
+                  <p className="truncate text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                    {activeMask.avatarSeed}
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <form onSubmit={onCreateRoom} className="masq-panel-muted space-y-2 rounded-xl p-2.5">
-            <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Create Room</h2>
-            <input
-              data-testid="room-create-title-input"
-              className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-              value={createTitle}
-              onChange={(event) => setCreateTitle(event.target.value)}
-              maxLength={80}
-              required
-            />
-
-            <select
-              className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-              value={createKind}
-              onChange={(event) => setCreateKind(RoomKindSchema.parse(event.target.value))}
-            >
-              <option value="EPHEMERAL">Ephemeral</option>
-              <option value="RITUAL">Ritual</option>
-              <option value="NARRATIVE">Narrative</option>
-            </select>
-
-            {createKind === 'EPHEMERAL' ? (
-              <div>
-                <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Expires In (hours)</label>
-                <input
-                  className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-                  type="number"
-                  min={1}
-                  max={168}
-                  value={createHours}
-                  onChange={(event) => setCreateHours(Number(event.target.value))}
-                />
-              </div>
-            ) : null}
-
-            <label className="flex items-center gap-2 rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-xs text-slate-300">
+              <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Create Room</h2>
               <input
-                type="checkbox"
-                checked={createLocked}
-                onChange={(event) => setCreateLocked(event.target.checked)}
-                className="h-3 w-3"
+                data-testid="room-create-title-input"
+                className="w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
+                value={createTitle}
+                onChange={(event) => setCreateTitle(event.target.value)}
+                maxLength={80}
+                required
               />
-              Create as locked room
-            </label>
 
-            <button
-              data-testid="room-create-submit-button"
-              className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-              type="submit"
-              disabled={!activeMaskId}
-            >
-              Create Room
-            </button>
+              <select
+                className="w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
+                value={createKind}
+                onChange={(event) => setCreateKind(RoomKindSchema.parse(event.target.value))}
+              >
+                <option value="EPHEMERAL">Ephemeral</option>
+                <option value="RITUAL">Ritual</option>
+                <option value="NARRATIVE">Narrative</option>
+              </select>
+
+              {createKind === 'EPHEMERAL' ? (
+                <div>
+                  <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                    Expires In (hours)
+                  </label>
+                  <input
+                    className="w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={createHours}
+                    onChange={(event) => setCreateHours(Number(event.target.value))}
+                  />
+                </div>
+              ) : null}
+
+              <label className="flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={createLocked}
+                  onChange={(event) => setCreateLocked(event.target.checked)}
+                  className="h-3 w-3"
+                />
+                Create as locked room
+              </label>
+
+              <button
+                data-testid="room-create-submit-button"
+                className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                type="submit"
+                disabled={!activeMaskId}
+              >
+                Create Room
+              </button>
             </form>
 
             <form onSubmit={onJoinRoom} className="masq-panel-muted space-y-2 rounded-xl p-2.5">
-            <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Join Room</h2>
-            <input
-              className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus:border-neon-400"
-              value={joinRoomIdInput}
-              onChange={(event) => setJoinRoomIdInput(event.target.value)}
-              placeholder="Room code"
-              required
-            />
-            <button
-              className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-              type="submit"
-              disabled={!activeMaskId}
-            >
-              Join By Code
-            </button>
+              <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Join Room</h2>
+              <input
+                className="w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus:border-neon-400"
+                value={joinRoomIdInput}
+                onChange={(event) => setJoinRoomIdInput(event.target.value)}
+                placeholder="Room code"
+                required
+              />
+              <button
+                className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                type="submit"
+                disabled={!activeMaskId}
+              >
+                Join By Code
+              </button>
             </form>
 
             <div className="masq-panel-muted rounded-xl p-2.5">
-            <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Room Navigation</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Select a room from the shared left Spaces list.
-            </p>
-            {roomsLoading ? <p className="mt-2 text-xs text-slate-500">Refreshing room list...</p> : null}
-            {!roomsLoading && rooms.length === 0 ? (
-              <p className="mt-2 text-xs text-slate-500">No active rooms for this mask yet.</p>
-            ) : null}
+              <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Room Navigation</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Select a room from the shared left Spaces list.
+              </p>
+              {roomsLoading ? <p className="mt-2 text-xs text-slate-500">Refreshing room list...</p> : null}
+              {!roomsLoading && rooms.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500">No active rooms for this mask yet.</p>
+              ) : null}
             </div>
 
             {roomsError ? (
@@ -690,69 +698,47 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
           </div>
         </aside>
 
-        <div className="masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
-          {!selectedRoomId ? (
-            <div className="masq-panel-muted rounded-2xl p-6 text-sm text-slate-400">
-              Pick a room from the left, create one, or join with a room code.
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[1fr,260px]">
-              <section className="space-y-4">
-                <div className="masq-panel-muted rounded-2xl p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-semibold text-white">{room?.title ?? 'Room'}</h2>
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+        <main className="order-1 masq-panel rounded-2xl p-3 xl:order-2 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <div className="flex h-full flex-col gap-3">
+            {!selectedRoomId ? (
+              <div className="masq-panel-muted rounded-xl p-4 text-sm text-slate-500">
+                Pick a room from the left, create one, or join with a room code.
+              </div>
+            ) : (
+              <>
+                <div className="masq-panel-muted rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-lg font-semibold text-white">{room?.title ?? 'Room'}</h2>
+                      <p className="text-xs uppercase tracking-[0.15em] text-slate-500">
                         {room?.kind ?? 'CONNECTING'} - {socketStatus} - {room?.locked ? 'LOCKED' : 'OPEN'}
                       </p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                          Room code hidden for privacy
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void onCopyRoomCode();
-                          }}
-                          className="rounded-md border border-ink-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 transition hover:border-slate-500 hover:text-white"
-                        >
-                          Copy
-                        </button>
-                      </div>
                     </div>
-
-                    {isHost && room ? (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-xs uppercase tracking-[0.15em] text-neon-400 hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={onToggleLock}
-                        disabled={lockPending}
-                      >
-                        {lockPending ? 'Saving' : room.locked ? 'Unlock Room' : 'Lock Room'}
-                      </button>
-                    ) : null}
+                    <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                      Room code hidden
+                    </p>
                   </div>
 
                   {roomExpired ? (
-                    <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                    <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
                       Room expired. Messaging has been disabled.
                     </div>
                   ) : null}
 
                   {isMuted && selfMuteExpiresAt ? (
-                    <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                    <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
                       You are muted for {formatMuteRemaining(selfMuteExpiresAt, nowMs)}.
                     </div>
                   ) : null}
 
                   {moderationNotice ? (
-                    <div className="mt-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
+                    <div className="mt-3 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1.5 text-xs text-cyan-200">
                       {moderationNotice}
                     </div>
                   ) : null}
 
                   {socketError ? (
-                    <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                    <div className="mt-3 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-200">
                       {socketError}
                     </div>
                   ) : null}
@@ -771,7 +757,10 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                   disabledReason={roomExpired ? 'Room expired. Calls are disabled.' : undefined}
                 />
 
-                <div ref={messageListRef} className="h-[52vh] min-h-[280px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/78 p-4 lg:h-[420px]">
+                <div
+                  ref={messageListRef}
+                  className="min-h-[240px] flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/78 p-3"
+                >
                   <div className="space-y-3">
                     {messages.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
                     {messages.map((message) => (
@@ -813,11 +802,11 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                   </div>
                 </div>
 
-                <form onSubmit={sendMessage} className="masq-panel-muted rounded-2xl p-4">
-                  <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Message</label>
+                <form onSubmit={sendMessage} className="masq-panel-muted rounded-xl p-3">
+                  <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Message</label>
                   <textarea
                     data-testid="room-composer-textarea"
-                    className="h-24 w-full resize-none rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
+                    className="h-24 w-full resize-none rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
                     value={composerBody}
                     onChange={(event) => setComposerBody(event.target.value)}
                     placeholder="Speak as your mask"
@@ -858,7 +847,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                     </p>
                     <button
                       data-testid="room-send-submit-button"
-                      className="rounded-xl border border-neon-400/40 bg-neon-400/10 px-4 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                       type="submit"
                       disabled={
                         roomExpired ||
@@ -872,70 +861,113 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                     </button>
                   </div>
                 </form>
-              </section>
+              </>
+            )}
+          </div>
+        </main>
 
-              <aside className={`${mobileContextOpen ? 'block' : 'hidden'} rounded-2xl border border-ink-700 bg-ink-900/78 p-4 lg:block`}>
-                <button
-                  type="button"
-                  onClick={() => setMobileContextOpen(false)}
-                  className="mb-2 rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 lg:hidden"
-                >
-                  Close Context
-                </button>
-                <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500">Members</h3>
-                <div className="mt-3 space-y-2">
-                  {members.length === 0 ? <p className="text-xs text-slate-500">No members connected.</p> : null}
-                  {members.map((member) => {
-                    const isSelf = member.maskId === activeMaskId;
-                    const isBusy = moderationPendingMaskId === member.maskId;
-                    return (
-                      <div key={member.maskId} className="rounded-xl border border-ink-700 bg-ink-800/80 p-3">
-                      <div className="flex items-center gap-2">
-                        <MaskAvatar
-                          displayName={member.displayName}
-                          color={member.color}
-                          avatarUploadId={member.avatarUploadId}
-                          sizeClassName="h-6 w-6"
-                          textClassName="text-[9px]"
-                        />
-                        <p className="text-sm font-medium text-white">{member.displayName}</p>
-                      </div>
-                        <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                          {member.role} - {member.avatarSeed}
-                        </p>
+        <aside
+          className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}
+        >
+          <div className="flex h-full flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileContextOpen(false)}
+              className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
+            >
+              Close Context
+            </button>
 
-                        {isHost && !isSelf ? (
-                          <div className="mt-3 flex items-center gap-2">
-                            <button
-                              type="button"
-                              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-amber-200 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
-                              onClick={() => {
-                                void onMuteMember(member.maskId);
-                              }}
-                              disabled={isBusy}
-                            >
-                              Mute {DEFAULT_MUTE_MINUTES}m
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
-                              onClick={() => {
-                                void onExileMember(member.maskId);
-                              }}
-                              disabled={isBusy}
-                            >
-                              Exile
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+            {!selectedRoomId ? (
+              <div className="masq-panel-muted rounded-xl p-3 text-xs text-slate-500">
+                Select a room to view members and moderation controls.
+              </div>
+            ) : (
+              <>
+                <div className="masq-panel-muted rounded-xl p-3">
+                  <h3 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Room Controls</h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Room code hidden for privacy. Copy to share with trusted members.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void onCopyRoomCode();
+                      }}
+                      className="rounded-md border border-ink-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 transition hover:border-slate-500 hover:text-white"
+                    >
+                      Copy Code
+                    </button>
+                    {isHost && room ? (
+                      <button
+                        type="button"
+                        className="rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={onToggleLock}
+                        disabled={lockPending}
+                      >
+                        {lockPending ? 'Saving...' : room.locked ? 'Unlock' : 'Lock'}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              </aside>
-            </div>
-          )}
-        </div>
+
+                <div className="flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/78 p-3">
+                  <h3 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Members</h3>
+                  <div className="mt-2 space-y-2">
+                    {members.length === 0 ? <p className="text-xs text-slate-500">No members connected.</p> : null}
+                    {members.map((member) => {
+                      const isSelf = member.maskId === activeMaskId;
+                      const isBusy = moderationPendingMaskId === member.maskId;
+                      return (
+                        <div key={member.maskId} className="rounded-lg border border-ink-700 bg-ink-800/80 p-2.5">
+                          <div className="flex items-center gap-2">
+                            <MaskAvatar
+                              displayName={member.displayName}
+                              color={member.color}
+                              avatarUploadId={member.avatarUploadId}
+                              sizeClassName="h-6 w-6"
+                              textClassName="text-[9px]"
+                            />
+                            <p className="text-sm font-medium text-white">{member.displayName}</p>
+                          </div>
+                          <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                            {member.role} - {member.avatarSeed}
+                          </p>
+
+                          {isHost && !isSelf ? (
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-200 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => {
+                                  void onMuteMember(member.maskId);
+                                }}
+                                disabled={isBusy}
+                              >
+                                Mute {DEFAULT_MUTE_MINUTES}m
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => {
+                                  void onExileMember(member.maskId);
+                                }}
+                                disabled={isBusy}
+                              >
+                                Exile
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
       </section>
     </div>
   );

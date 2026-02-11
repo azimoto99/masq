@@ -14,7 +14,7 @@ import {
   type ServerMemberRole,
 } from '@masq/shared';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ApiError,
   buildUploadUrl,
@@ -72,16 +72,7 @@ const formatTimestamp = (isoDate: string) =>
 const hasPermission = (permissions: readonly ServerPermission[], permission: ServerPermission) =>
   permissions.includes(permission);
 
-const HUD_RAIL_ITEMS: Array<{ label: string; to: string; glyph: string }> = [
-  { label: 'Home', to: '/home', glyph: 'HM' },
-  { label: 'Servers', to: '/servers', glyph: 'SV' },
-  { label: 'Friends', to: '/friends', glyph: 'FR' },
-  { label: 'DMs', to: '/dm', glyph: 'DM' },
-  { label: 'Rooms', to: '/rooms', glyph: 'RM' },
-];
-
 export function ServersPage({ me }: ServersPageProps) {
-  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const params = useParams<{ serverId: string; channelId: string }>();
@@ -779,8 +770,6 @@ export function ServersPage({ me }: ServersPageProps) {
   const canJoinRtc = Boolean(selectedChannel && currentChannelMaskId);
   const isConnectedRtc =
     rtc.connectionState === 'connected' || rtc.connectionState === 'reconnecting' || rtc.inAnotherCall;
-  const isRailActive = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
     <>
@@ -812,49 +801,9 @@ export function ServersPage({ me }: ServersPageProps) {
           >
             {mobileContextOpen ? 'Hide Context' : 'Show Context'}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setServerDialogTab('create');
-              setServerDialogOpen(true);
-            }}
-            className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300"
-          >
-            Create / Join
-          </button>
         </div>
-        <div className="grid gap-3 xl:grid-cols-[60px_280px_minmax(0,1fr)_320px]">
-          <aside className="hidden xl:sticky xl:top-4 xl:block xl:h-[calc(100vh-3rem)]">
-            <div className="flex h-full flex-col items-center gap-2 rounded-2xl border border-ink-700 bg-ink-900/85 py-2">
-              {HUD_RAIL_ITEMS.map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  title={item.label}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border text-[10px] font-semibold uppercase tracking-[0.12em] transition ${
-                    isRailActive(item.to)
-                      ? 'border-cyan-400/45 bg-cyan-400/10 text-cyan-100'
-                      : 'border-ink-700 bg-ink-800 text-slate-300 hover:border-slate-500 hover:text-white'
-                  }`}
-                >
-                  {item.glyph}
-                </Link>
-              ))}
-              <button
-                type="button"
-                title="Create or join server"
-                onClick={() => {
-                  setServerDialogTab('create');
-                  setServerDialogOpen(true);
-                }}
-                className="mt-auto inline-flex h-10 w-10 items-center justify-center rounded-lg border border-emerald-400/45 bg-emerald-400/10 text-lg font-semibold text-emerald-100 transition hover:border-emerald-300"
-              >
-                +
-              </button>
-            </div>
-          </aside>
-
-          <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-2 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+        <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+          <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
             <div className="flex h-full flex-col gap-3">
               <button
                 type="button"
@@ -1008,7 +957,7 @@ export function ServersPage({ me }: ServersPageProps) {
             </div>
           </div>
 
-          <main className="order-1 xl:order-3 masq-panel p-2.5 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <main className="order-1 xl:order-2 masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
             <div className="flex h-full flex-col gap-3">
               {!selectedServerId ? (
                 <div className="flex h-full items-center justify-center rounded-xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
@@ -1242,7 +1191,7 @@ export function ServersPage({ me }: ServersPageProps) {
             </div>
           </main>
 
-          <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-4 xl:block masq-panel p-2.5 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+          <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
             <div className="flex h-full flex-col gap-3">
               <button
                 type="button"
