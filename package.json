@@ -1,8 +1,38 @@
 {
-  "name": "@masq/desktop",
+  "name": "masq",
   "private": true,
-  "version": "0.1.4",
-  "description": "Masq desktop shell",
-  "author": "Masq",
-  "main": "dist/main.cjs"
+  "packageManager": "pnpm@9.12.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "pnpm --filter @masq/api prisma:generate",
+    "dev": "pnpm dev:docker && pnpm --filter @masq/shared build && concurrently -n shared,api,web \"pnpm --filter @masq/shared dev\" \"pnpm --filter @masq/api dev\" \"pnpm --filter @masq/web dev\"",
+    "dev:docker": "docker compose up -d",
+    "dev:api": "pnpm --filter @masq/api dev",
+    "dev:web": "pnpm --filter @masq/web dev",
+    "dev:desktop": "pnpm --filter @masq/desktop dev",
+    "build": "pnpm -r build",
+    "build:desktop": "pnpm --filter @masq/desktop dist:win",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "test": "pnpm -r test",
+    "test:e2e": "playwright test",
+    "prisma:migrate": "pnpm --filter @masq/api prisma:migrate",
+    "prisma:generate": "pnpm --filter @masq/api prisma:generate"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@typescript-eslint/eslint-plugin": "^7.16.0",
+    "@typescript-eslint/parser": "^7.16.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
 }
