@@ -4,24 +4,22 @@ import {
   ServerSocketEventSchema,
   type DmMessage,
   type DmParticipantState,
-  type DmThreadListItem,
   type FriendUser,
   type MeResponse,
 } from '@masq/shared';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   ApiError,
   buildUploadUrl,
   getDmThread,
-  listDmThreads,
   sendFriendRequest,
   setDmMask,
   uploadImage,
 } from '../lib/api';
-import { BrandLogo } from '../components/BrandLogo';
 import { MaskAvatar } from '../components/MaskAvatar';
 import { RTCPanel } from '../components/RTCPanel';
+import { SpacesSidebar } from '../components/SpacesSidebar';
 
 interface DmPageProps {
   me: MeResponse;
@@ -50,15 +48,10 @@ const formatTimestamp = (isoDate: string) =>
   });
 
 export function DmPage({ me }: DmPageProps) {
-  const navigate = useNavigate();
   const params = useParams<{ threadId: string }>();
   const selectedThreadId = params.threadId ?? null;
   const socketRef = useRef<WebSocket | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
-
-  const [threads, setThreads] = useState<DmThreadListItem[]>([]);
-  const [threadsLoading, setThreadsLoading] = useState(false);
-  const [threadsError, setThreadsError] = useState<string | null>(null);
 
   const [peer, setPeer] = useState<FriendUser | null>(null);
   const [participants, setParticipants] = useState<DmParticipantState[]>([]);
@@ -76,28 +69,13 @@ export function DmPage({ me }: DmPageProps) {
   const [savingMask, setSavingMask] = useState(false);
   const [friendRequestPendingUserId, setFriendRequestPendingUserId] = useState<string | null>(null);
   const [friendRequestNotice, setFriendRequestNotice] = useState<string | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileContextOpen, setMobileContextOpen] = useState(false);
 
   const activeMask = useMemo(
     () => me.masks.find((mask) => mask.id === activeMaskId) ?? null,
     [activeMaskId, me.masks],
   );
-
-  const loadThreads = async () => {
-    setThreadsLoading(true);
-    setThreadsError(null);
-    try {
-      const response = await listDmThreads();
-      setThreads(response.threads);
-    } catch (err) {
-      setThreadsError(err instanceof ApiError ? err.message : 'Failed to load DM threads');
-    } finally {
-      setThreadsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadThreads();
-  }, []);
 
   useEffect(() => {
     if (!selectedThreadId) {
@@ -137,6 +115,11 @@ export function DmPage({ me }: DmPageProps) {
     return () => {
       cancelled = true;
     };
+  }, [selectedThreadId]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+    setMobileContextOpen(false);
   }, [selectedThreadId]);
 
   useEffect(() => {
@@ -209,7 +192,6 @@ export function DmPage({ me }: DmPageProps) {
         }
 
         setMessages((current) => [...current, socketEvent.data.message]);
-        void loadThreads();
         return;
       }
 
@@ -226,10 +208,6 @@ export function DmPage({ me }: DmPageProps) {
       ws.close();
     };
   }, [activeMaskId, selectedThreadId]);
-
-  const onSelectThread = (threadId: string) => {
-    navigate(`/dm/${threadId}`);
-  };
 
   const onSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -278,6 +256,8 @@ export function DmPage({ me }: DmPageProps) {
 
   const onSwitchMask = async (nextMaskId: string) => {
     if (!selectedThreadId) {
+      setActiveMaskId(nextMaskId);
+      window.localStorage.setItem(ACTIVE_MASK_STORAGE_KEY, nextMaskId);
       return;
     }
 
@@ -300,8 +280,6 @@ export function DmPage({ me }: DmPageProps) {
         });
         socketRef.current.send(JSON.stringify(joinEvent));
       }
-
-      await loadThreads();
     } catch (err) {
       setSocketError(err instanceof ApiError ? err.message : 'Failed to switch mask');
     } finally {
@@ -343,114 +321,107 @@ export function DmPage({ me }: DmPageProps) {
     }
   }, [activeMaskId, me.masks]);
 
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
-        <div>
-          <BrandLogo />
-          <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Direct Messages</p>
-          <h1 className="mt-3 text-3xl font-semibold text-white">Friend DM Threads</h1>
-          <p className="mt-2 text-sm text-slate-400">Realtime messages with mask-only identity.</p>
-        </div>
-      </header>
+  const fallbackMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY) ?? me.masks[0]?.id ?? null;
 
-      <section className="grid gap-6 lg:grid-cols-[320px,1fr]">
-        <aside className="space-y-4 rounded-3xl border border-ink-700 bg-ink-800/80 p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Threads</h2>
+  return (
+    <div className="mx-auto w-full max-w-[1520px]">
+      <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
+        <button
+          type="button"
+          onClick={() => {
+            setMobileSidebarOpen((current) => !current);
+          }}
+          className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300"
+        >
+          {mobileSidebarOpen ? 'Hide Spaces' : 'Show Spaces'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMobileContextOpen((current) => !current);
+          }}
+          className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300"
+        >
+          {mobileContextOpen ? 'Hide Context' : 'Show Context'}
+        </button>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+          <div className="flex h-full flex-col gap-3">
             <button
               type="button"
-              className="rounded-md border border-ink-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
-              onClick={() => {
-                void loadThreads();
-              }}
+              onClick={() => setMobileSidebarOpen(false)}
+              className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
             >
-              Refresh
+              Close Spaces
             </button>
-          </div>
 
-          {threadsLoading ? <p className="text-xs text-slate-500">Loading...</p> : null}
-          {threadsError ? (
-            <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
-              {threadsError}
-            </p>
-          ) : null}
-          {!threadsLoading && threads.length === 0 ? <p className="text-xs text-slate-500">No DM threads yet.</p> : null}
+            <SpacesSidebar className="flex-1 overflow-hidden" activeMaskId={activeMaskId ?? fallbackMaskId} />
 
-          <div className="space-y-2">
-            {threads.map((item) => (
-              <button
-                key={item.thread.id}
-                type="button"
-                onClick={() => onSelectThread(item.thread.id)}
-                className={`w-full rounded-xl border px-3 py-2 text-left text-xs transition ${
-                  selectedThreadId === item.thread.id
-                    ? 'border-neon-400/60 bg-neon-400/10 text-white'
-                    : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600'
-                }`}
+            <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+              <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                Active DM Mask
+              </label>
+              <select
+                className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
+                value={activeMaskId ?? ''}
+                onChange={(event) => {
+                  void onSwitchMask(event.target.value);
+                }}
+                disabled={savingMask}
               >
-                <div className="font-medium">{item.peer.defaultMask?.displayName ?? item.peer.email}</div>
-                <div className="mt-1 truncate text-[10px] text-slate-500">
-                  {item.lastMessage
-                    ? item.lastMessage.body || (item.lastMessage.image ? '[image]' : 'No text')
-                    : 'No messages yet'}
+                {me.masks.map((mask) => (
+                  <option key={mask.id} value={mask.id}>
+                    {mask.displayName}
+                  </option>
+                ))}
+              </select>
+              {activeMask ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <MaskAvatar
+                    displayName={activeMask.displayName}
+                    color={activeMask.color}
+                    avatarUploadId={activeMask.avatarUploadId}
+                    sizeClassName="h-6 w-6"
+                    textClassName="text-[9px]"
+                  />
+                  <p className="truncate text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                    {activeMask.avatarSeed}
+                  </p>
                 </div>
-              </button>
-            ))}
+              ) : null}
+            </div>
           </div>
-        </aside>
+        </div>
 
-        <div className="rounded-3xl border border-ink-700 bg-ink-800/80 p-5">
-          {!selectedThreadId ? (
-            <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
-              Pick a DM thread from the list, or start one from Friends.
-            </div>
-          ) : pageError ? (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {pageError}
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[1fr,240px]">
-              <section className="space-y-4">
-                <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold text-white">
-                        {peer?.defaultMask?.displayName ?? peer?.email ?? 'Direct Message'}
-                      </h2>
-                      <p className="text-xs uppercase tracking-[0.15em] text-slate-500">
-                        {socketStatus} {activeMask ? `- speaking as ${activeMask.displayName}` : ''}
-                      </p>
-                    </div>
-
-                    <div className="w-full md:w-64">
-                      <label className="mb-1 block text-[10px] uppercase tracking-[0.15em] text-slate-500">
-                        Active Mask
-                      </label>
-                      <select
-                        className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
-                        value={activeMaskId ?? ''}
-                        onChange={(event) => {
-                          void onSwitchMask(event.target.value);
-                        }}
-                        disabled={savingMask}
-                      >
-                        {me.masks.map((mask) => (
-                          <option key={mask.id} value={mask.id}>
-                            {mask.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+        <main className="order-1 xl:order-2 rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <div className="flex h-full flex-col gap-3">
+            {!selectedThreadId ? (
+              <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-4 text-sm text-slate-500">
+                Select a DM thread from the left Spaces list.
+              </div>
+            ) : pageError ? (
+              <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                {pageError}
+              </div>
+            ) : (
+              <>
+                <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3">
+                  <h2 className="text-lg font-semibold text-white">
+                    {peer?.defaultMask?.displayName ?? 'Direct Message'}
+                  </h2>
+                  <p className="text-xs uppercase tracking-[0.15em] text-slate-500">
+                    {socketStatus} {activeMask ? `- speaking as ${activeMask.displayName}` : ''}
+                  </p>
 
                   {socketError ? (
-                    <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                    <div className="mt-3 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-200">
                       {socketError}
                     </div>
                   ) : null}
                   {friendRequestNotice ? (
-                    <div className="mt-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
+                    <div className="mt-3 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1.5 text-xs text-cyan-200">
                       {friendRequestNotice}
                     </div>
                   ) : null}
@@ -467,13 +438,16 @@ export function DmPage({ me }: DmPageProps) {
                   disabledReason={activeMaskId ? undefined : 'Select an active mask to join call.'}
                 />
 
-                <div ref={messageListRef} className="h-[52vh] min-h-[280px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/70 p-4 lg:h-[420px]">
+                <div
+                  ref={messageListRef}
+                  className="min-h-[240px] flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-3"
+                >
                   <div className="space-y-3">
                     {messages.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
                     {messages.map((message) => (
                       <article key={message.id} className="rounded-xl border border-ink-700 bg-ink-800/60 p-3">
                         <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm">
+                          <div className="flex items-center gap-2 text-sm">
                             <MaskAvatar
                               displayName={message.mask.displayName}
                               color={message.mask.color}
@@ -509,10 +483,10 @@ export function DmPage({ me }: DmPageProps) {
                   </div>
                 </div>
 
-                <form onSubmit={onSendMessage} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-                  <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Message</label>
+                <form onSubmit={onSendMessage} className="rounded-xl border border-ink-700 bg-ink-900/70 p-3">
+                  <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Message</label>
                   <textarea
-                    className="h-24 w-full resize-none rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
+                    className="h-24 w-full resize-none rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
                     value={composerBody}
                     onChange={(event) => setComposerBody(event.target.value)}
                     placeholder="Speak through your mask"
@@ -553,7 +527,7 @@ export function DmPage({ me }: DmPageProps) {
                     </p>
                     <button
                       type="submit"
-                      className="rounded-xl border border-neon-400/40 bg-neon-400/10 px-4 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={
                         socketStatus !== 'connected' ||
                         sendingMessage ||
@@ -564,14 +538,31 @@ export function DmPage({ me }: DmPageProps) {
                     </button>
                   </div>
                 </form>
-              </section>
+              </>
+            )}
+          </div>
+        </main>
 
-              <aside className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-                <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500">Participants</h3>
-                <div className="mt-3 space-y-2">
+        <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+          <div className="flex h-full flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileContextOpen(false)}
+              className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
+            >
+              Close Context
+            </button>
+            {!selectedThreadId ? (
+              <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3 text-xs text-slate-500">
+                Select a DM thread to view participants.
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-3">
+                <h3 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Participants</h3>
+                <div className="mt-2 space-y-2">
                   {participants.length === 0 ? <p className="text-xs text-slate-500">No participants.</p> : null}
                   {participants.map((participant) => (
-                    <div key={participant.userId} className="rounded-xl border border-ink-700 bg-ink-800/80 p-3">
+                    <div key={participant.userId} className="rounded-lg border border-ink-700 bg-ink-800/80 p-2.5">
                       <div className="flex items-center gap-2">
                         <MaskAvatar
                           displayName={participant.mask.displayName}
@@ -582,7 +573,9 @@ export function DmPage({ me }: DmPageProps) {
                         />
                         <p className="text-sm font-medium text-white">{participant.mask.displayName}</p>
                       </div>
-                      <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">{participant.mask.avatarSeed}</p>
+                      <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                        {participant.mask.avatarSeed}
+                      </p>
                       {participant.userId !== me.user.id ? (
                         <button
                           type="button"
@@ -598,11 +591,11 @@ export function DmPage({ me }: DmPageProps) {
                     </div>
                   ))}
                 </div>
-              </aside>
-            </div>
-          )}
-        </div>
-      </section>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

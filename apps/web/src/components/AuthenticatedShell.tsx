@@ -42,8 +42,6 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
   const showGlobalSpacesSidebar =
     !location.pathname.startsWith('/servers') &&
     (location.pathname.startsWith('/friends') ||
-      location.pathname.startsWith('/dm') ||
-      location.pathname.startsWith('/rooms') ||
       location.pathname.startsWith('/masks') ||
       location.pathname.startsWith('/home'));
 

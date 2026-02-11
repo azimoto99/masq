@@ -24,9 +24,9 @@ import {
   setRoomLocked,
   uploadImage,
 } from '../lib/api';
-import { BrandLogo } from '../components/BrandLogo';
 import { MaskAvatar } from '../components/MaskAvatar';
 import { RTCPanel } from '../components/RTCPanel';
+import { SpacesSidebar } from '../components/SpacesSidebar';
 
 interface RoomChatPageProps {
   me: MeResponse;
@@ -96,6 +96,8 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
   const [composerImageFile, setComposerImageFile] = useState<File | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileContextOpen, setMobileContextOpen] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +192,11 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
 
     void reloadRooms(activeMaskId);
   }, [activeMaskId]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+    setMobileContextOpen(false);
+  }, [selectedRoomId]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -531,20 +538,38 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
-        <div>
-          <BrandLogo />
-          <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Room Chat</p>
-          <h1 className="mt-3 text-3xl font-semibold text-white">Realtime Room Messaging</h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Every event runs through masks. Global user identity is never shown in the room.
-          </p>
-        </div>
-      </header>
+    <div className="mx-auto w-full max-w-[1520px]">
+      <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
+        <button
+          type="button"
+          onClick={() => {
+            setMobileSidebarOpen((current) => !current);
+          }}
+          className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300"
+        >
+          {mobileSidebarOpen ? 'Hide Spaces' : 'Show Spaces'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMobileContextOpen((current) => !current);
+          }}
+          className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300"
+        >
+          {mobileContextOpen ? 'Hide Context' : 'Show Context'}
+        </button>
+      </div>
 
-      <section className="grid gap-6 lg:grid-cols-[340px,1fr]">
-        <aside className="space-y-6 rounded-3xl border border-ink-700 bg-ink-800/80 p-5">
+      <section className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className={`${mobileSidebarOpen ? 'block' : 'hidden'} space-y-3 rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(false)}
+            className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
+          >
+            Close Spaces
+          </button>
+          <SpacesSidebar className="min-h-[280px] flex-1 overflow-hidden" activeMaskId={activeMaskId} />
           <div>
             <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Active Mask</label>
             <select
@@ -572,8 +597,8 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             ) : null}
           </div>
 
-          <form onSubmit={onCreateRoom} className="space-y-3 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Create Room</h2>
+          <form onSubmit={onCreateRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Create Room</h2>
             <input
               data-testid="room-create-title-input"
               className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
@@ -619,7 +644,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
 
             <button
               data-testid="room-create-submit-button"
-              className="w-full rounded-xl border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white"
+              className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
               disabled={!activeMaskId}
             >
@@ -627,8 +652,8 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             </button>
           </form>
 
-          <form onSubmit={onJoinRoom} className="space-y-3 rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Join Room</h2>
+          <form onSubmit={onJoinRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Join Room</h2>
             <input
               className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus:border-neon-400"
               value={joinRoomIdInput}
@@ -637,7 +662,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
               required
             />
             <button
-              className="w-full rounded-xl border border-neon-400/40 bg-neon-400/10 px-3 py-2 text-sm font-medium text-neon-400 transition hover:border-neon-400 hover:text-white"
+              className="w-full rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
               disabled={!activeMaskId}
             >
@@ -645,8 +670,8 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             </button>
           </form>
 
-          <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-            <h2 className="text-xs uppercase tracking-[0.2em] text-slate-500">Room Navigation</h2>
+          <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Room Navigation</h2>
             <p className="mt-1 text-xs text-slate-500">
               Select a room from the shared left Spaces list.
             </p>
@@ -663,7 +688,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
           ) : null}
         </aside>
 
-        <div className="rounded-3xl border border-ink-700 bg-ink-800/80 p-5">
+        <div className="rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
           {!selectedRoomId ? (
             <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
               Pick a room from the left, create one, or join with a room code.
@@ -846,7 +871,14 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                 </form>
               </section>
 
-              <aside className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
+              <aside className={`${mobileContextOpen ? 'block' : 'hidden'} rounded-2xl border border-ink-700 bg-ink-900/70 p-4 lg:block`}>
+                <button
+                  type="button"
+                  onClick={() => setMobileContextOpen(false)}
+                  className="mb-2 rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 lg:hidden"
+                >
+                  Close Context
+                </button>
                 <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500">Members</h3>
                 <div className="mt-3 space-y-2">
                   {members.length === 0 ? <p className="text-xs text-slate-500">No members connected.</p> : null}

@@ -1,7 +1,7 @@
-import { type RoomListItem, type ServerListItem } from '@masq/shared';
+import { type DmThreadListItem, type RoomListItem, type ServerListItem } from '@masq/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ApiError, listRooms, listServers } from '../lib/api';
+import { ApiError, listDmThreads, listRooms, listServers } from '../lib/api';
 
 interface SpacesSidebarProps {
   className?: string;
@@ -50,6 +50,9 @@ export function SpacesSidebar({
   const [roomItems, setRoomItems] = useState<RoomListItem[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [roomsError, setRoomsError] = useState<string | null>(null);
+  const [dmItems, setDmItems] = useState<DmThreadListItem[]>([]);
+  const [dmLoading, setDmLoading] = useState(false);
+  const [dmError, setDmError] = useState<string | null>(null);
   const persistedMaskId = window.localStorage.getItem('masq.activeMaskId');
   const effectiveMaskId = activeMaskId ?? persistedMaskId;
 
@@ -120,6 +123,35 @@ export function SpacesSidebar({
     };
   }, [effectiveMaskId, location.pathname]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadDmItems = async () => {
+      setDmLoading(true);
+      setDmError(null);
+      try {
+        const response = await listDmThreads();
+        if (!cancelled) {
+          setDmItems(response.threads);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDmError(err instanceof ApiError ? err.message : 'Failed to load DM threads');
+          setDmItems([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setDmLoading(false);
+        }
+      }
+    };
+
+    void loadDmItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname]);
+
   const effectiveServers = servers ?? internalServers;
   const effectiveLoading = serversLoading ?? internalLoading;
   const effectiveError = serversError ?? internalError;
@@ -138,6 +170,14 @@ export function SpacesSidebar({
   }, [location.pathname, selectedServerId]);
   const activeRoomId = useMemo(() => {
     if (!location.pathname.startsWith('/rooms/')) {
+      return null;
+    }
+
+    const segment = location.pathname.split('/')[2] ?? null;
+    return segment || null;
+  }, [location.pathname]);
+  const activeDmThreadId = useMemo(() => {
+    if (!location.pathname.startsWith('/dm/')) {
       return null;
     }
 
@@ -261,6 +301,43 @@ export function SpacesSidebar({
           {roomsError ? (
             <p className="mt-2 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
               {roomsError}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">DM Threads</p>
+
+          {dmLoading ? <p className="mt-2 text-xs text-slate-500">Loading DMs...</p> : null}
+          {!dmLoading && dmItems.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">No DM threads yet.</p>
+          ) : null}
+
+          <div className="mt-2 space-y-1.5">
+            {dmItems.map((item) => (
+              <button
+                key={item.thread.id}
+                type="button"
+                onClick={() => navigate(`/dm/${item.thread.id}`)}
+                className={`w-full rounded-lg border px-2 py-1.5 text-left transition ${
+                  activeDmThreadId === item.thread.id
+                    ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-white'
+                    : 'border-ink-700 bg-ink-900/75 text-slate-300 hover:border-slate-600 hover:text-white'
+                }`}
+              >
+                <p className="truncate text-xs font-medium">{item.peer.defaultMask?.displayName ?? 'Masked Contact'}</p>
+                <p className="truncate text-[10px] uppercase tracking-[0.11em] text-slate-500">
+                  {item.lastMessage
+                    ? item.lastMessage.body || (item.lastMessage.image ? '[image]' : 'No text')
+                    : 'No messages'}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          {dmError ? (
+            <p className="mt-2 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
+              {dmError}
             </p>
           ) : null}
         </div>
