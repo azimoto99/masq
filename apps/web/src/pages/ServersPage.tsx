@@ -792,7 +792,7 @@ export function ServersPage({ me }: ServersPageProps) {
                 Close Spaces
               </button>
               <SpacesSidebar
-                className="flex-1 overflow-hidden"
+                className="flex-1 min-h-0"
                 servers={servers}
                 serversLoading={serversLoading}
                 serversError={serversError}
@@ -1220,7 +1220,7 @@ export function ServersPage({ me }: ServersPageProps) {
                               </span>
                             </div>
                             <p className="mt-1 truncate text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                              {member.serverMask.avatarSeed} - {onlineUserIds.has(member.userId) ? 'online in channel' : 'offline'}
+                              {onlineUserIds.has(member.userId) ? 'online in channel' : 'offline'}
                             </p>
                             <p className="mt-1 text-[10px] text-slate-400">
                               Roles:{' '}

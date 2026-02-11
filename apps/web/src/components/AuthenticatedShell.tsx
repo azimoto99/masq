@@ -122,7 +122,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
           <div className="grid gap-4 lg:grid-cols-[280px,1fr]">
             <SpacesSidebar
               activeMaskId={activeMask?.id ?? null}
-              className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)] lg:overflow-hidden"
+              className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)]"
             />
             <div>{children}</div>
           </div>

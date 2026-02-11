@@ -357,7 +357,7 @@ export function DmPage({ me }: DmPageProps) {
               Close Spaces
             </button>
 
-            <SpacesSidebar className="flex-1 overflow-hidden" activeMaskId={activeMaskId ?? fallbackMaskId} />
+            <SpacesSidebar className="flex-1 min-h-0" activeMaskId={activeMaskId ?? fallbackMaskId} />
 
             <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
               <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">

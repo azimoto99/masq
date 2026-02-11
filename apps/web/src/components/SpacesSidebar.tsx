@@ -189,7 +189,9 @@ export function SpacesSidebar({
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
-    <div className={`masq-surface border border-ink-700 bg-ink-800/80 p-3 ${className ?? ''}`}>
+    <div
+      className={`masq-surface min-h-0 overflow-y-auto border border-ink-700 bg-ink-800/80 p-3 ${className ?? ''}`}
+    >
       <div className="flex h-full flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
           <div>

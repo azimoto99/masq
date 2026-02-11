@@ -561,16 +561,17 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
       </div>
 
       <section className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className={`${mobileSidebarOpen ? 'block' : 'hidden'} space-y-3 rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
-          <button
-            type="button"
-            onClick={() => setMobileSidebarOpen(false)}
-            className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
-          >
-            Close Spaces
-          </button>
-          <SpacesSidebar className="min-h-[280px] flex-1 overflow-hidden" activeMaskId={activeMaskId} />
-          <div>
+        <aside className={`${mobileSidebarOpen ? 'block' : 'hidden'} rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+          <div className="flex h-full flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
+            >
+              Close Spaces
+            </button>
+            <SpacesSidebar className="flex-1 min-h-0" activeMaskId={activeMaskId} />
+            <div>
             <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Active Mask</label>
             <select
               className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
@@ -595,9 +596,9 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                 <p className="text-xs text-slate-500">seed: {activeMask.avatarSeed}</p>
               </div>
             ) : null}
-          </div>
+            </div>
 
-          <form onSubmit={onCreateRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <form onSubmit={onCreateRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
             <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Create Room</h2>
             <input
               data-testid="room-create-title-input"
@@ -650,9 +651,9 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             >
               Create Room
             </button>
-          </form>
+            </form>
 
-          <form onSubmit={onJoinRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <form onSubmit={onJoinRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
             <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Join Room</h2>
             <input
               className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus:border-neon-400"
@@ -668,9 +669,9 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             >
               Join By Code
             </button>
-          </form>
+            </form>
 
-          <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
             <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Room Navigation</h2>
             <p className="mt-1 text-xs text-slate-500">
               Select a room from the shared left Spaces list.
@@ -679,13 +680,14 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             {!roomsLoading && rooms.length === 0 ? (
               <p className="mt-2 text-xs text-slate-500">No active rooms for this mask yet.</p>
             ) : null}
-          </div>
-
-          {roomsError ? (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-              {roomsError}
             </div>
-          ) : null}
+
+            {roomsError ? (
+              <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                {roomsError}
+              </div>
+            ) : null}
+          </div>
         </aside>
 
         <div className="rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
