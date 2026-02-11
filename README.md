@@ -204,6 +204,15 @@ MAX_IMAGE_UPLOAD_BYTES=10485760
 4. Open DM thread for same users and verify audio/video connection there.
 5. Open EPHEMERAL room call and verify new join attempts fail after room TTL expiry.
 
+## Persistent Call QA Checklist
+1. Join a server channel call, then navigate to `/friends`, `/dm`, and `/rooms`.
+2. Confirm the global Call Dock still shows the active call and controls stay clickable.
+3. Verify mic/cam/share toggles from the dock continue to affect the same ongoing call.
+4. Return to `/servers/:serverId/:channelId` and confirm participant state matches (no reconnect drop).
+5. From another context (DM or room), click `Join` while already in a call and confirm `Switch call?` modal appears.
+6. Click `Cancel` and verify original call stays connected.
+7. Repeat and click `Switch Call`; verify old call ends and new context call connects.
+
 ## E2E Smoke Test
 - Playwright smoke test: `tests/e2e/smoke.spec.ts`
 - Covers single-user room chat and two-user realtime room exchange

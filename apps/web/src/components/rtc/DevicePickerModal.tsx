@@ -21,13 +21,13 @@ export function DevicePickerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
-      <div className="masq-surface w-full max-w-lg rounded-2xl border border-ink-700 bg-ink-900 p-4">
+      <div className="masq-surface w-full max-w-lg rounded-xl border border-ink-700 bg-ink-900 p-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-white">Device Settings</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-ink-600 px-2 py-1 text-xs uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500"
+            className="rounded-md border border-ink-600 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500"
           >
             Close
           </button>
@@ -37,7 +37,7 @@ export function DevicePickerModal({
           <label className="block text-xs text-slate-400">
             <span className="mb-1 block uppercase tracking-[0.12em] text-slate-500">Microphone</span>
             <select
-              className="w-full rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 text-sm text-white focus:border-neon-400"
+              className="w-full rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 text-sm text-white focus:border-cyan-300"
               value={devices.selectedAudioInputId}
               onChange={(event) => {
                 onSelectDevice('audioinput', event.target.value);
@@ -54,7 +54,7 @@ export function DevicePickerModal({
           <label className="block text-xs text-slate-400">
             <span className="mb-1 block uppercase tracking-[0.12em] text-slate-500">Speaker Output</span>
             <select
-              className="w-full rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 text-sm text-white focus:border-neon-400"
+              className="w-full rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 text-sm text-white focus:border-cyan-300"
               value={devices.selectedAudioOutputId}
               onChange={(event) => {
                 onSelectDevice('audiooutput', event.target.value);
@@ -71,7 +71,7 @@ export function DevicePickerModal({
           <label className="block text-xs text-slate-400">
             <span className="mb-1 block uppercase tracking-[0.12em] text-slate-500">Camera</span>
             <select
-              className="w-full rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 text-sm text-white focus:border-neon-400"
+              className="w-full rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 text-sm text-white focus:border-cyan-300"
               value={devices.selectedVideoInputId}
               onChange={(event) => {
                 onSelectDevice('videoinput', event.target.value);
@@ -90,7 +90,7 @@ export function DevicePickerModal({
           <button
             type="button"
             onClick={onRefresh}
-            className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400"
+            className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300"
           >
             Refresh Devices
           </button>

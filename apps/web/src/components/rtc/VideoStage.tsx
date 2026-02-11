@@ -61,7 +61,7 @@ const SpeakerTile = ({
   const isFocused = Boolean(tileFocusKey && focusKey === tileFocusKey);
 
   return (
-    <article className="rounded-xl border border-ink-700 bg-ink-900/80 p-2">
+    <article className="rounded-lg border border-ink-700 bg-ink-900/80 p-1.5">
       <div
         className={`relative overflow-hidden rounded-md border border-ink-700 bg-ink-800 ${
           tileMode === 'screen' ? 'aspect-video' : 'aspect-[4/3]'
@@ -92,7 +92,7 @@ const SpeakerTile = ({
             className={`absolute right-1.5 top-1.5 rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.11em] transition ${
               isFocused
                 ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-100'
-                : 'border-white/25 bg-black/65 text-slate-200 hover:border-cyan-300/60 hover:text-white'
+                : 'border-white/20 bg-black/65 text-slate-200 hover:border-cyan-300/60 hover:text-white'
             }`}
           >
             {isFocused ? 'Restore' : 'Maximize'}
@@ -112,7 +112,7 @@ const SpeakerTile = ({
       {canModerate && !participant.isLocal && maskId ? (
         <button
           type="button"
-          className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-200 hover:border-amber-400"
+          className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-100 hover:border-amber-400"
           onClick={() => {
             onMuteParticipant(maskId);
           }}
@@ -211,10 +211,10 @@ export function VideoStage({
   }
 
   if (activeScreenShare) {
-    return (
-      <section className="space-y-2">
+      return (
+      <section className="space-y-1.5">
         {focusedMedia && focusedParticipant ? (
-          <div className="rounded-xl border border-cyan-400/35 bg-ink-900/80 p-2">
+          <div className="rounded-lg border border-cyan-400/35 bg-ink-900/80 p-1.5">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: focusedColor }} />
@@ -251,8 +251,8 @@ export function VideoStage({
           </div>
         ) : null}
 
-        <div className="grid gap-2 rounded-xl border border-ink-700 bg-ink-800/70 p-2 xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="rounded-xl border border-ink-700 bg-ink-900/80 p-2">
+        <div className="grid gap-1.5 rounded-lg border border-ink-700 bg-ink-800/75 p-1.5 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="rounded-lg border border-ink-700 bg-ink-900/80 p-1.5">
             <div className="mb-1.5 flex items-center justify-between">
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-200">Screen Share</p>
               <div className="flex items-center gap-1.5">
@@ -320,9 +320,9 @@ export function VideoStage({
   }
 
   return (
-    <section className="space-y-2">
+    <section className="space-y-1.5">
       {focusedMedia && focusedParticipant ? (
-        <div className="rounded-xl border border-cyan-400/35 bg-ink-900/80 p-2">
+        <div className="rounded-lg border border-cyan-400/35 bg-ink-900/80 p-1.5">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: focusedColor }} />
@@ -359,7 +359,7 @@ export function VideoStage({
         </div>
       ) : null}
 
-      <section className="grid gap-2 rounded-xl border border-ink-700 bg-ink-800/70 p-2 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-1.5 rounded-lg border border-ink-700 bg-ink-800/75 p-1.5 sm:grid-cols-2 xl:grid-cols-3">
         {labeledParticipants.map((entry) => (
           <SpeakerTile
             key={entry.participant.identity}

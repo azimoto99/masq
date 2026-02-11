@@ -4,7 +4,7 @@ import { CallBar } from './rtc/CallBar';
 import { CallPanel } from './rtc/CallPanel';
 import { DevicePickerModal } from './rtc/DevicePickerModal';
 import { VideoStage } from './rtc/VideoStage';
-import { useRtcSession } from './rtc/useRtcSession';
+import { useRtcScope } from '../rtc/RtcProvider';
 
 interface RTCPanelProps {
   contextType: RtcContextType;
@@ -15,6 +15,7 @@ interface RTCPanelProps {
   canEndCall?: boolean;
   disabled?: boolean;
   disabledReason?: string;
+  contextLabel?: string;
   title?: string;
 }
 
@@ -27,10 +28,11 @@ export function RTCPanel({
   canEndCall = false,
   disabled = false,
   disabledReason,
+  contextLabel,
   title = 'Voice / Video',
 }: RTCPanelProps) {
   const [devicePickerOpen, setDevicePickerOpen] = useState(false);
-  const rtc = useRtcSession({
+  const rtc = useRtcScope({
     contextType,
     contextId,
     maskId,
@@ -38,11 +40,19 @@ export function RTCPanel({
     canModerate,
     canEndCall,
     disabled,
+    disabledReason,
+    label: contextLabel ?? title,
   });
 
   return (
     <section className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-3">
       <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{title}</p>
+
+      {rtc.inAnotherCall && rtc.activeContext ? (
+        <p className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
+          Active call is running in {rtc.activeContext.label}. Joining here will prompt to switch.
+        </p>
+      ) : null}
 
       <CallBar
         connectionState={rtc.connectionState}

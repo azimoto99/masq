@@ -429,6 +429,7 @@ export function DmPage({ me }: DmPageProps) {
 
                 <RTCPanel
                   title="DM RTC"
+                  contextLabel={peer?.defaultMask?.displayName ? `DM - ${peer.defaultMask.displayName}` : 'DM Voice'}
                   contextType="DM_THREAD"
                   contextId={selectedThreadId}
                   maskId={activeMaskId}

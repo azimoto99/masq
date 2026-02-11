@@ -760,6 +760,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
 
                 <RTCPanel
                   title="Room RTC"
+                  contextLabel={room?.title ? `Room - ${room.title}` : 'Room Voice'}
                   contextType="EPHEMERAL_ROOM"
                   contextId={selectedRoomId}
                   maskId={activeMaskId}

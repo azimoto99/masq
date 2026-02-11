@@ -5,16 +5,22 @@
 :root {
   font-family: 'Space Grotesk', system-ui, sans-serif;
   --masq-radius-sm: 8px;
-  --masq-radius-md: 12px;
-  --masq-radius-lg: 16px;
-  --masq-shadow-surface: 0 14px 32px rgba(0, 0, 0, 0.28);
+  --masq-radius-md: 10px;
+  --masq-radius-lg: 14px;
+  --masq-shadow-surface: 0 10px 24px rgba(0, 0, 0, 0.24);
   --masq-accent: #78e6da;
   --masq-live: #72cfaa;
 }
 
 body {
   min-height: 100vh;
-  background: radial-gradient(circle at top, #1e2230 0%, #0a0b10 60%);
+  background: radial-gradient(circle at top, #1d2c40 0%, #090b11 66%);
+  color: #e2e8f0;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(95, 116, 148, 0.45) rgba(7, 9, 14, 0.7);
 }
 
 @layer components {
@@ -24,10 +30,10 @@ body {
   }
 
   .masq-focus-ring {
-    box-shadow: 0 0 0 1px rgba(120, 230, 218, 0.35), 0 0 16px rgba(120, 230, 218, 0.16);
+    box-shadow: 0 0 0 1px rgba(120, 230, 218, 0.28);
   }
 
   .masq-live-ring {
-    box-shadow: 0 0 0 1px rgba(114, 207, 170, 0.35), 0 0 14px rgba(114, 207, 170, 0.18);
+    box-shadow: 0 0 0 1px rgba(114, 207, 170, 0.35), 0 0 0 3px rgba(114, 207, 170, 0.12);
   }
 }

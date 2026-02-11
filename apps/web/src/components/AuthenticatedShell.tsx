@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo';
 import { SpacesSidebar } from './SpacesSidebar';
+import { CallDock } from './rtc/CallDock';
 
 interface AuthenticatedShellProps {
   me: MeResponse;
@@ -49,16 +50,16 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
-    <div className="mx-auto w-full max-w-[1520px] space-y-4">
-      <header className="masq-surface rounded-3xl border border-ink-700 bg-ink-800/90 px-4 py-3">
+    <div className="mx-auto w-full max-w-[1520px] space-y-3 pb-24">
+      <header className="masq-surface rounded-3xl border border-ink-700 bg-ink-800/90 px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link to="/home" className="rounded-lg border border-ink-700 bg-ink-900 px-2.5 py-1.5">
+            <Link to="/home" className="rounded-lg border border-ink-700 bg-ink-900 px-2.5 py-1">
               <BrandLogo className="h-7 w-auto select-none" />
             </Link>
             <div>
               <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Masq</p>
-              <p className="text-sm text-slate-300">{me.user.email}</p>
+              <p className="text-xs text-slate-300">{me.user.email}</p>
             </div>
           </div>
 
@@ -75,7 +76,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
             </div>
             <Link
               to="/masks"
-              className="rounded-md border border-ink-700 px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+              className="rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
             >
               Masks
             </Link>
@@ -85,7 +86,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
                 void handleLogout();
               }}
               disabled={loggingOut}
-              className="rounded-md border border-ink-700 px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loggingOut ? 'Signing out...' : 'Logout'}
             </button>
@@ -130,6 +131,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
       ) : (
         children
       )}
+      <CallDock />
     </div>
   );
 }

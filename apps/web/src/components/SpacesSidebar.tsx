@@ -199,33 +199,33 @@ export function SpacesSidebar({
 
   return (
     <div
-      className={`masq-surface min-h-0 overflow-y-auto border border-ink-700 bg-ink-800/80 p-3 ${className ?? ''}`}
+      className={`masq-surface min-h-0 overflow-y-auto border border-ink-700 bg-ink-800/85 p-2.5 ${className ?? ''}`}
     >
-      <div className="flex h-full flex-col gap-3">
+      <div className="flex h-full flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Spaces</p>
-            <h1 className="text-base font-semibold text-white">Switch</h1>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">HUD</p>
+            <h1 className="text-sm font-semibold text-white">Spaces</h1>
           </div>
           <button
             type="button"
             onClick={onOpenServerAccess}
-            className="rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400"
+            className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300"
           >
             Create / Join
           </button>
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {STATIC_SPACES.map((item) => (
             <button
               key={item.key}
               type="button"
               data-testid={item.testId}
               onClick={() => navigate(item.to)}
-              className={`w-full rounded-md border px-2.5 py-2 text-left text-xs uppercase tracking-[0.12em] transition ${
+              className={`w-full rounded-md border px-2 py-1.5 text-left text-[11px] uppercase tracking-[0.12em] transition ${
                 isSpaceActive(item.to)
-                  ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-neon-100'
+                  ? 'border-cyan-400/45 bg-cyan-400/10 text-cyan-100'
                   : 'border-ink-700 bg-ink-900/70 text-slate-300 hover:border-slate-600 hover:text-white'
               }`}
             >
@@ -234,7 +234,7 @@ export function SpacesSidebar({
           ))}
         </div>
 
-        <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+        <div className="rounded-lg border border-ink-700 bg-ink-900/70 p-2">
           <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Servers</p>
 
           {effectiveLoading ? <p className="mt-2 text-xs text-slate-500">Loading servers...</p> : null}
@@ -242,15 +242,15 @@ export function SpacesSidebar({
             <p className="mt-2 text-xs text-slate-500">No servers yet.</p>
           ) : null}
 
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-2 space-y-1">
             {effectiveServers.map((item) => (
               <button
                 key={item.server.id}
                 type="button"
                 onClick={() => navigate(`/servers/${item.server.id}`)}
-                className={`w-full rounded-lg border px-2 py-1.5 text-left transition ${
+                className={`w-full rounded-md border px-2 py-1.5 text-left transition ${
                   activeServerId === item.server.id
-                    ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-white'
+                    ? 'border-cyan-400/45 bg-cyan-400/10 text-white'
                     : 'border-ink-700 bg-ink-900/75 text-slate-300 hover:border-slate-600 hover:text-white'
                 }`}
               >
@@ -276,7 +276,7 @@ export function SpacesSidebar({
           ) : null}
         </div>
 
-        <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+        <div className="rounded-lg border border-ink-700 bg-ink-900/70 p-2">
           <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Rooms</p>
 
           {!effectiveMaskId ? (
@@ -287,15 +287,15 @@ export function SpacesSidebar({
             <p className="mt-2 text-xs text-slate-500">No active rooms.</p>
           ) : null}
 
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-2 space-y-1">
             {roomItems.map((room) => (
               <button
                 key={room.id}
                 type="button"
                 onClick={() => navigate(`/rooms/${room.id}`)}
-                className={`w-full rounded-lg border px-2 py-1.5 text-left transition ${
+                className={`w-full rounded-md border px-2 py-1.5 text-left transition ${
                   activeRoomId === room.id
-                    ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-white'
+                    ? 'border-cyan-400/45 bg-cyan-400/10 text-white'
                     : 'border-ink-700 bg-ink-900/75 text-slate-300 hover:border-slate-600 hover:text-white'
                 }`}
               >
@@ -314,7 +314,7 @@ export function SpacesSidebar({
           ) : null}
         </div>
 
-        <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+        <div className="rounded-lg border border-ink-700 bg-ink-900/70 p-2">
           <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">DM Threads</p>
 
           {dmLoading ? <p className="mt-2 text-xs text-slate-500">Loading DMs...</p> : null}
@@ -322,15 +322,15 @@ export function SpacesSidebar({
             <p className="mt-2 text-xs text-slate-500">No DM threads yet.</p>
           ) : null}
 
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-2 space-y-1">
             {dmItems.map((item) => (
               <button
                 key={item.thread.id}
                 type="button"
                 onClick={() => navigate(`/dm/${item.thread.id}`)}
-                className={`w-full rounded-lg border px-2 py-1.5 text-left transition ${
+                className={`w-full rounded-md border px-2 py-1.5 text-left transition ${
                   activeDmThreadId === item.thread.id
-                    ? 'masq-focus-ring border-neon-400/45 bg-neon-400/10 text-white'
+                    ? 'border-cyan-400/45 bg-cyan-400/10 text-white'
                     : 'border-ink-700 bg-ink-900/75 text-slate-300 hover:border-slate-600 hover:text-white'
                 }`}
               >
