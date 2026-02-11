@@ -193,8 +193,8 @@ export function FriendsPage({ me }: FriendsPageProps) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
+      <header className="masq-panel rounded-2xl p-5">
         <div>
           <BrandLogo />
           <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Social Graph</p>
@@ -203,9 +203,9 @@ export function FriendsPage({ me }: FriendsPageProps) {
         </div>
       </header>
 
-      <section className="grid gap-6 lg:grid-cols-[1.1fr,1fr]">
+      <section className="grid gap-4 lg:grid-cols-[1.1fr,1fr]">
         <div className="space-y-6">
-          <form onSubmit={handleSendRequest} className="rounded-3xl border border-ink-700 bg-ink-800/80 p-6">
+          <form onSubmit={handleSendRequest} className="masq-panel rounded-xl p-5">
             <h2 className="text-sm uppercase tracking-[0.28em] text-slate-500">Add Friend</h2>
             <p className="mt-2 text-xs text-slate-400">Signed in as {me.user.email}</p>
             <div className="mt-3 flex items-center justify-between rounded-xl border border-ink-700 bg-ink-900/70 px-3 py-2">
@@ -244,7 +244,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
             </div>
           </form>
 
-          <div className="rounded-3xl border border-ink-700 bg-ink-800/80 p-6">
+          <div className="masq-panel rounded-xl p-5">
             <h2 className="text-sm uppercase tracking-[0.28em] text-slate-500">Incoming Requests</h2>
             <div className="mt-4 space-y-3">
               {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
@@ -252,7 +252,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
                 <p className="text-sm text-slate-500">No incoming requests.</p>
               ) : null}
               {incoming.map((item) => (
-                <article key={item.request.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
+                <article key={item.request.id} className="masq-panel-muted rounded-lg p-3.5">
                   <p className="text-sm text-white">{item.fromUser.email}</p>
                   <p className="mt-1 font-mono text-[11px] text-cyan-200">Code: {item.fromUser.friendCode}</p>
                   {item.fromUser.defaultMask ? (
@@ -298,7 +298,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-ink-700 bg-ink-800/80 p-6">
+          <div className="masq-panel rounded-xl p-5">
             <h2 className="text-sm uppercase tracking-[0.28em] text-slate-500">Outgoing Requests</h2>
             <div className="mt-4 space-y-3">
               {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
@@ -306,7 +306,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
                 <p className="text-sm text-slate-500">No outgoing requests.</p>
               ) : null}
               {outgoing.map((item) => (
-                <article key={item.request.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
+                <article key={item.request.id} className="masq-panel-muted rounded-lg p-3.5">
                   <p className="text-sm text-white">{item.toUser.email}</p>
                   <p className="mt-1 font-mono text-[11px] text-cyan-200">Code: {item.toUser.friendCode}</p>
                   <button
@@ -325,13 +325,13 @@ export function FriendsPage({ me }: FriendsPageProps) {
           </div>
         </div>
 
-        <aside className="rounded-3xl border border-ink-700 bg-ink-800/80 p-6">
+        <aside className="masq-panel rounded-xl p-5">
           <h2 className="text-sm uppercase tracking-[0.28em] text-slate-500">Friends</h2>
           <div className="mt-4 space-y-3">
             {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
             {!loading && friends.length === 0 ? <p className="text-sm text-slate-500">No friends yet.</p> : null}
             {friends.map((friend) => (
-              <article key={friend.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
+              <article key={friend.id} className="masq-panel-muted rounded-lg p-3.5">
                 <p className="text-sm text-white">
                   {friend.defaultMask?.displayName ?? 'Masked Contact'}
                 </p>

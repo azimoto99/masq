@@ -13,15 +13,15 @@ export function HomePage({ me }: HomePageProps) {
   const activeMask = me.masks.find((mask) => mask.id === activeMaskId) ?? me.masks[0] ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <header className="rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
+      <header className="masq-panel rounded-2xl p-5">
         <BrandLogo />
         <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Masq Home</p>
-        <h1 className="mt-3 text-3xl font-semibold text-white">Control Center</h1>
-        <p className="mt-2 text-sm text-slate-400">
+        <h1 className="mt-2 text-2xl font-semibold text-white">Control Center</h1>
+        <p className="mt-1.5 text-sm text-slate-400">
           Signed in as {me.user.email}. Identity in chat always comes from your selected mask.
         </p>
-        <p className="mt-3 text-sm text-slate-300">
+        <p className="mt-2.5 text-sm text-slate-300">
           Active mask: <span className="text-white">{activeMask?.displayName ?? 'none selected'}</span>
         </p>
       </header>
@@ -32,11 +32,11 @@ export function HomePage({ me }: HomePageProps) {
         </div>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Link
           to="/masks"
           data-testid="home-open-masks-button"
-          className="rounded-2xl border border-neon-400/40 bg-neon-400/10 p-4 text-left transition hover:border-neon-400"
+          className="masq-panel rounded-xl border-cyan-400/40 bg-cyan-400/10 p-4 text-left transition hover:border-cyan-300"
         >
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Identity</p>
           <p className="mt-2 text-lg font-medium text-white">Masks</p>
@@ -45,7 +45,7 @@ export function HomePage({ me }: HomePageProps) {
 
         <Link
           to="/friends"
-          className="rounded-2xl border border-ink-700 bg-ink-800/80 p-4 text-left transition hover:border-slate-500"
+          className="masq-panel rounded-xl p-4 text-left transition hover:border-slate-500"
         >
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Social</p>
           <p className="mt-2 text-lg font-medium text-white">Friends</p>
@@ -54,7 +54,7 @@ export function HomePage({ me }: HomePageProps) {
 
         <Link
           to="/dm"
-          className="rounded-2xl border border-ink-700 bg-ink-800/80 p-4 text-left transition hover:border-slate-500"
+          className="masq-panel rounded-xl p-4 text-left transition hover:border-slate-500"
         >
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Chat</p>
           <p className="mt-2 text-lg font-medium text-white">Direct Messages</p>
@@ -63,7 +63,7 @@ export function HomePage({ me }: HomePageProps) {
 
         <Link
           to="/servers"
-          className="rounded-2xl border border-ink-700 bg-ink-800/80 p-4 text-left transition hover:border-slate-500"
+          className="masq-panel rounded-xl p-4 text-left transition hover:border-slate-500"
         >
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Guilds</p>
           <p className="mt-2 text-lg font-medium text-white">Servers</p>
@@ -72,7 +72,7 @@ export function HomePage({ me }: HomePageProps) {
 
         <Link
           to="/rooms"
-          className="rounded-2xl border border-ink-700 bg-ink-800/80 p-4 text-left transition hover:border-slate-500"
+          className="masq-panel rounded-xl p-4 text-left transition hover:border-slate-500"
         >
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Sessions</p>
           <p className="mt-2 text-lg font-medium text-white">Ephemeral Rooms</p>

@@ -877,7 +877,7 @@ export function ServersPage({ me }: ServersPageProps) {
               />
 
               {selectedServerId && serverDetails ? (
-                <div className="mt-auto space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+                <div className="masq-panel-muted mt-auto space-y-2 rounded-xl p-2.5">
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Active Server</p>
                     <p className="truncate text-sm font-medium text-white">{serverDetails.server.name}</p>
@@ -889,25 +889,44 @@ export function ServersPage({ me }: ServersPageProps) {
                   </div>
 
                   {myServerMember ? (
-                    <label className="block">
-                      <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                        Server Mask
-                      </span>
-                      <select
-                        className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
-                        value={myServerMember.serverMask.id}
-                        onChange={(event) => {
-                          void onChangeServerMask(event.target.value);
-                        }}
-                        disabled={maskChangePending}
-                      >
-                        {me.masks.map((mask) => (
-                          <option key={mask.id} value={mask.id}>
-                            {mask.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <>
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                          Server Mask
+                        </span>
+                        <select
+                          className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
+                          value={myServerMember.serverMask.id}
+                          onChange={(event) => {
+                            void onChangeServerMask(event.target.value);
+                          }}
+                          disabled={maskChangePending}
+                        >
+                          {me.masks.map((mask) => (
+                            <option key={mask.id} value={mask.id}>
+                              {mask.displayName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                          Identity Mode
+                        </span>
+                        <select
+                          className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
+                          value={channelIdentityMode}
+                          onChange={(event) => {
+                            void onUpdateChannelIdentityMode(event.target.value as 'SERVER_MASK' | 'CHANNEL_MASK');
+                          }}
+                          disabled={!canManageMembers || settingsPending}
+                        >
+                          <option value="SERVER_MASK">SERVER_MASK</option>
+                          <option value="CHANNEL_MASK">CHANNEL_MASK</option>
+                        </select>
+                      </label>
+                    </>
                   ) : null}
 
                   <div>
@@ -963,13 +982,33 @@ export function ServersPage({ me }: ServersPageProps) {
                       </button>
                     </form>
                   ) : null}
+
+                  {canManageInvites ? (
+                    <div className="space-y-1.5 rounded-md border border-ink-700 bg-ink-900/70 p-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void onCreateInvite();
+                        }}
+                        disabled={createInvitePending}
+                        className="w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {createInvitePending ? 'Creating Invite...' : 'Create Invite'}
+                      </button>
+                      {latestInviteCode ? (
+                        <p className="text-[11px] text-cyan-100">
+                          Invite: <span className="font-mono">{latestInviteCode}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
             </div>
           </div>
 
-          <main className="order-1 xl:order-3 masq-surface border border-ink-700 bg-ink-800/80 p-2.5 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <main className="order-1 xl:order-3 masq-panel p-2.5 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
             <div className="flex h-full flex-col gap-3">
               {!selectedServerId ? (
                 <div className="flex h-full items-center justify-center rounded-xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
@@ -1203,7 +1242,7 @@ export function ServersPage({ me }: ServersPageProps) {
             </div>
           </main>
 
-          <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-4 xl:block masq-surface border border-ink-700 bg-ink-800/80 p-2.5 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+          <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-4 xl:block masq-panel p-2.5 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
             <div className="flex h-full flex-col gap-3">
               <button
                 type="button"
@@ -1655,44 +1694,6 @@ export function ServersPage({ me }: ServersPageProps) {
         </div>
       ) : null}
 
-      {selectedServerId && serverDetails && canManageInvites ? (
-        <div className="fixed bottom-24 right-4 z-30 hidden rounded-lg border border-cyan-500/35 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30 sm:block">
-          <button
-            type="button"
-            onClick={() => {
-              void onCreateInvite();
-            }}
-            disabled={createInvitePending}
-            className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {createInvitePending ? 'Creating Invite...' : 'Create Invite'}
-          </button>
-          {latestInviteCode ? (
-            <p className="mt-1 text-xs text-cyan-200">
-              Invite: <span className="font-mono">{latestInviteCode}</span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {selectedServerId && serverDetails ? (
-        <div className="fixed bottom-24 left-4 z-30 hidden rounded-lg border border-ink-700 bg-ink-900/95 px-3 py-2 shadow-lg shadow-black/30 sm:block">
-          <label className="block text-[10px] uppercase tracking-[0.12em] text-slate-500">
-            Identity Mode
-          </label>
-          <select
-            className="mt-1 rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-            value={channelIdentityMode}
-            onChange={(event) => {
-              void onUpdateChannelIdentityMode(event.target.value as 'SERVER_MASK' | 'CHANNEL_MASK');
-            }}
-            disabled={!canManageMembers || settingsPending}
-          >
-            <option value="SERVER_MASK">SERVER_MASK</option>
-            <option value="CHANNEL_MASK">CHANNEL_MASK</option>
-          </select>
-        </div>
-      ) : null}
     </>
   );
 }

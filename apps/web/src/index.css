@@ -7,9 +7,16 @@
   --masq-radius-sm: 8px;
   --masq-radius-md: 10px;
   --masq-radius-lg: 14px;
+  --masq-dock-height: 76px;
   --masq-shadow-surface: 0 10px 24px rgba(0, 0, 0, 0.24);
   --masq-accent: #78e6da;
   --masq-live: #72cfaa;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --masq-dock-height: 90px;
+  }
 }
 
 body {
@@ -27,6 +34,19 @@ body {
   .masq-surface {
     border-radius: var(--masq-radius-lg);
     box-shadow: var(--masq-shadow-surface);
+  }
+
+  .masq-panel {
+    border: 1px solid rgba(57, 74, 102, 0.6);
+    border-radius: var(--masq-radius-lg);
+    background: linear-gradient(180deg, rgba(10, 16, 28, 0.95), rgba(8, 12, 22, 0.98));
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+  }
+
+  .masq-panel-muted {
+    border: 1px solid rgba(47, 61, 86, 0.55);
+    border-radius: var(--masq-radius-md);
+    background: rgba(9, 15, 26, 0.92);
   }
 
   .masq-focus-ring {

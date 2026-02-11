@@ -359,7 +359,7 @@ export function DmPage({ me }: DmPageProps) {
 
             <SpacesSidebar className="flex-1 min-h-0" activeMaskId={activeMaskId ?? fallbackMaskId} />
 
-            <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <div className="masq-panel-muted rounded-xl p-2.5">
               <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
                 Active DM Mask
               </label>
@@ -395,10 +395,10 @@ export function DmPage({ me }: DmPageProps) {
           </div>
         </div>
 
-        <main className="order-1 xl:order-2 rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+        <main className="order-1 xl:order-2 masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
           <div className="flex h-full flex-col gap-3">
             {!selectedThreadId ? (
-              <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-4 text-sm text-slate-500">
+              <div className="masq-panel-muted rounded-xl p-4 text-sm text-slate-500">
                 Select a DM thread from the left Spaces list.
               </div>
             ) : pageError ? (
@@ -407,7 +407,7 @@ export function DmPage({ me }: DmPageProps) {
               </div>
             ) : (
               <>
-                <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3">
+                <div className="masq-panel-muted rounded-xl p-3">
                   <h2 className="text-lg font-semibold text-white">
                     {peer?.defaultMask?.displayName ?? 'Direct Message'}
                   </h2>
@@ -441,7 +441,7 @@ export function DmPage({ me }: DmPageProps) {
 
                 <div
                   ref={messageListRef}
-                  className="min-h-[240px] flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-3"
+                  className="min-h-[240px] flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/78 p-3"
                 >
                   <div className="space-y-3">
                     {messages.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
@@ -484,7 +484,7 @@ export function DmPage({ me }: DmPageProps) {
                   </div>
                 </div>
 
-                <form onSubmit={onSendMessage} className="rounded-xl border border-ink-700 bg-ink-900/70 p-3">
+                <form onSubmit={onSendMessage} className="masq-panel-muted rounded-xl p-3">
                   <label className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Message</label>
                   <textarea
                     className="h-24 w-full resize-none rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
@@ -544,7 +544,7 @@ export function DmPage({ me }: DmPageProps) {
           </div>
         </main>
 
-        <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+        <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
           <div className="flex h-full flex-col gap-3">
             <button
               type="button"
@@ -554,11 +554,11 @@ export function DmPage({ me }: DmPageProps) {
               Close Context
             </button>
             {!selectedThreadId ? (
-              <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3 text-xs text-slate-500">
+              <div className="masq-panel-muted rounded-xl p-3 text-xs text-slate-500">
                 Select a DM thread to view participants.
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-3">
+              <div className="flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/78 p-3">
                 <h3 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Participants</h3>
                 <div className="mt-2 space-y-2">
                   {participants.length === 0 ? <p className="text-xs text-slate-500">No participants.</p> : null}

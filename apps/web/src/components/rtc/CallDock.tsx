@@ -35,186 +35,194 @@ export function CallDock() {
   return (
     <>
       {rtc.dockExpanded && hasContext ? (
-        <section className="fixed bottom-20 left-3 right-3 z-40 max-h-[70vh] overflow-hidden rounded-xl border border-ink-700 bg-ink-900/96 shadow-2xl shadow-black/45 md:left-auto md:w-[560px]">
-          <header className="flex items-center justify-between gap-2 border-b border-ink-700 px-3 py-2">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Call Stage</p>
-              <p className="truncate text-sm font-medium text-white">{rtc.activeContext?.label}</p>
-            </div>
-            <button
-              type="button"
-              onClick={rtc.toggleDockExpanded}
-              className="rounded-md border border-ink-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
-            >
-              Minimize
-            </button>
-          </header>
-          <div className="max-h-[calc(70vh-3.25rem)] space-y-3 overflow-y-auto p-3">
-            {rtc.hasVisualMedia ? (
-              <VideoStage
+        <section
+          className="fixed left-0 right-0 z-40 px-3 sm:px-6"
+          style={{ bottom: 'calc(var(--masq-dock-height) + 0.65rem)' }}
+        >
+          <div className="mx-auto max-w-[1240px] overflow-hidden rounded-xl border border-ink-600 bg-ink-900 shadow-2xl shadow-black/45">
+            <header className="flex items-center justify-between gap-2 border-b border-ink-700 px-3 py-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Call Stage</p>
+                <p className="truncate text-sm font-medium text-white">{rtc.activeContext?.label}</p>
+              </div>
+              <button
+                type="button"
+                onClick={rtc.toggleDockExpanded}
+                className="rounded-md border border-ink-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+              >
+                Minimize
+              </button>
+            </header>
+            <div className="max-h-[68vh] space-y-2.5 overflow-y-auto p-3">
+              {rtc.hasVisualMedia ? (
+                <VideoStage
+                  participants={rtc.participants}
+                  activeScreenShare={rtc.activeScreenShare}
+                  deafened={rtc.deafened}
+                  canModerate={rtc.canModerate}
+                  onMuteParticipant={(targetMaskId) => {
+                    void rtc.muteParticipant(targetMaskId);
+                  }}
+                />
+              ) : null}
+
+              <CallPanel
+                connectionState={rtc.connectionState}
+                sessionId={rtc.sessionId}
+                roomName={rtc.livekitRoomName}
                 participants={rtc.participants}
-                activeScreenShare={rtc.activeScreenShare}
-                deafened={rtc.deafened}
+                canJoin={hasContext}
                 canModerate={rtc.canModerate}
+                onJoin={() => {
+                  if (!rtc.activeContext) {
+                    return;
+                  }
+
+                  void rtc.requestJoin({
+                    ...rtc.activeContext,
+                  });
+                }}
+                onLeave={() => {
+                  void rtc.leaveCall();
+                }}
                 onMuteParticipant={(targetMaskId) => {
                   void rtc.muteParticipant(targetMaskId);
                 }}
               />
-            ) : null}
-
-            <CallPanel
-              connectionState={rtc.connectionState}
-              sessionId={rtc.sessionId}
-              roomName={rtc.livekitRoomName}
-              participants={rtc.participants}
-              canJoin={hasContext}
-              canModerate={rtc.canModerate}
-              onJoin={() => {
-                if (!rtc.activeContext) {
-                  return;
-                }
-
-                void rtc.requestJoin({
-                  ...rtc.activeContext,
-                });
-              }}
-              onLeave={() => {
-                void rtc.leaveCall();
-              }}
-              onMuteParticipant={(targetMaskId) => {
-                void rtc.muteParticipant(targetMaskId);
-              }}
-            />
+            </div>
           </div>
         </section>
       ) : null}
 
-      <section className="fixed bottom-3 left-3 right-3 z-40 sm:left-6 sm:right-6">
-        <div
-          className={`rounded-xl border bg-ink-900/96 px-3 py-2 shadow-xl shadow-black/45 transition ${
-            hasLiveConnection
-              ? 'border-emerald-400/45 ring-1 ring-emerald-400/20'
-              : hasContext
-                ? 'border-cyan-400/40'
-                : 'border-ink-700'
-          }`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-slate-300">
-                {hasContext ? `In call: ${rtc.activeContext?.label}` : 'No active call'}
-              </p>
-              <p className="flex items-center gap-2 text-[11px] text-slate-500">
-                <span>{connectionLabel(rtc.connectionState)}</span>
-                {hasContext ? (
-                  <>
-                    <span>{rtc.participants.length} online</span>
-                    {localSpeaking ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-emerald-200">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
-                        Speaking
-                      </span>
-                    ) : null}
-                  </>
-                ) : null}
-              </p>
-            </div>
+      <section className="fixed bottom-3 left-0 right-0 z-40 px-3 sm:px-6">
+        <div className="mx-auto max-w-[1240px]">
+          <div
+            className={`rounded-xl border bg-ink-900 px-3 py-2 shadow-xl shadow-black/50 transition ${
+              hasLiveConnection
+                ? 'border-emerald-400/45 ring-1 ring-emerald-400/20'
+                : hasContext
+                  ? 'border-cyan-400/35'
+                  : 'border-ink-600'
+            }`}
+          >
+            <div className="flex min-h-[56px] flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-slate-300">
+                  {hasContext ? `In call: ${rtc.activeContext?.label}` : 'No active call'}
+                </p>
+                <p className="flex items-center gap-2 text-[11px] text-slate-500">
+                  <span>{connectionLabel(rtc.connectionState)}</span>
+                  {hasContext ? (
+                    <>
+                      <span>{rtc.participants.length} online</span>
+                      {localSpeaking ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-emerald-200">
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+                          Speaking
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span>Join from any channel, DM, or room.</span>
+                  )}
+                </p>
+              </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              {hasContext && !hasSession ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!rtc.activeContext) {
-                      return;
-                    }
-
-                    void rtc.requestJoin({
-                      ...rtc.activeContext,
-                    });
-                  }}
-                  className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-300"
-                >
-                  Join
-                </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => {
-                  void rtc.toggleMic();
-                }}
-                disabled={!hasSession || rtc.selfServerMuted}
-                className={`rounded-md border px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45 ${
-                  rtc.micEnabled
-                    ? 'border-cyan-300/55 bg-cyan-400/10 text-cyan-100'
-                    : 'border-ink-600 text-slate-300 hover:border-slate-500'
-                }`}
-              >
-                Mic
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void rtc.toggleCamera();
-                }}
-                disabled={!hasSession || rtc.selfServerMuted}
-                className={`rounded-md border px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45 ${
-                  rtc.cameraEnabled
-                    ? 'border-cyan-300/55 bg-cyan-400/10 text-cyan-100'
-                    : 'border-ink-600 text-slate-300 hover:border-slate-500'
-                }`}
-              >
-                Cam
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void rtc.toggleScreenShare();
-                }}
-                disabled={!hasSession || rtc.selfServerMuted}
-                className={`rounded-md border px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45 ${
-                  rtc.screenEnabled
-                    ? 'border-cyan-300/55 bg-cyan-400/10 text-cyan-100'
-                    : 'border-ink-600 text-slate-300 hover:border-slate-500'
-                }`}
-              >
-                Share
-              </button>
-              <button
-                type="button"
-                onClick={rtc.openDevicePicker}
-                disabled={!hasContext}
-                className="rounded-md border border-ink-600 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Devices
-              </button>
-              <button
-                type="button"
-                onClick={rtc.toggleDockExpanded}
-                disabled={!hasContext}
-                className="rounded-md border border-ink-600 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {rtc.dockExpanded ? 'Collapse' : 'Expand'}
-              </button>
               {hasContext ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void rtc.leaveCall();
-                  }}
-                  className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400"
-                >
-                  Leave
-                </button>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {!hasSession ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!rtc.activeContext) {
+                          return;
+                        }
+
+                        void rtc.requestJoin({
+                          ...rtc.activeContext,
+                        });
+                      }}
+                      className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300"
+                    >
+                      Join
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void rtc.toggleMic();
+                    }}
+                    disabled={!hasSession || rtc.selfServerMuted}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45 ${
+                      rtc.micEnabled
+                        ? 'border-cyan-300/55 bg-cyan-400/10 text-cyan-100'
+                        : 'border-ink-600 text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
+                    Mic
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void rtc.toggleCamera();
+                    }}
+                    disabled={!hasSession || rtc.selfServerMuted}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45 ${
+                      rtc.cameraEnabled
+                        ? 'border-cyan-300/55 bg-cyan-400/10 text-cyan-100'
+                        : 'border-ink-600 text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
+                    Cam
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void rtc.toggleScreenShare();
+                    }}
+                    disabled={!hasSession || rtc.selfServerMuted}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45 ${
+                      rtc.screenEnabled
+                        ? 'border-cyan-300/55 bg-cyan-400/10 text-cyan-100'
+                        : 'border-ink-600 text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
+                    Share
+                  </button>
+                  <button
+                    type="button"
+                    onClick={rtc.openDevicePicker}
+                    className="rounded-md border border-ink-600 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500"
+                  >
+                    Devices
+                  </button>
+                  <button
+                    type="button"
+                    onClick={rtc.toggleDockExpanded}
+                    className="rounded-md border border-ink-600 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500"
+                  >
+                    {rtc.dockExpanded ? 'Collapse' : 'Expand'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void rtc.leaveCall();
+                    }}
+                    className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400"
+                  >
+                    Leave
+                  </button>
+                </div>
               ) : null}
             </div>
+
+            {rtc.error ? (
+              <p className="mt-2 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
+                {rtc.error}
+              </p>
+            ) : null}
           </div>
-          {rtc.error ? (
-            <p className="mt-2 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
-              {rtc.error}
-            </p>
-          ) : null}
         </div>
       </section>
 

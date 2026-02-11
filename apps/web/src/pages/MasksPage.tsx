@@ -105,8 +105,8 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
-      <header className="flex flex-col gap-4 rounded-3xl border border-ink-700 bg-ink-800/85 p-6 shadow-2xl shadow-black/40 md:flex-row md:items-center md:justify-between">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
+      <header className="masq-panel flex flex-col gap-4 rounded-2xl p-5 md:flex-row md:items-center md:justify-between">
         <div>
           <BrandLogo />
           <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Masq Identity</p>
@@ -114,7 +114,7 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
           <p className="mt-2 text-sm text-slate-400">Signed in as {me.user.email}</p>
         </div>
 
-        <div className="rounded-2xl border border-ink-700 bg-ink-900 px-4 py-3 text-sm text-slate-300">
+        <div className="masq-panel-muted rounded-xl px-4 py-3 text-sm text-slate-300">
           <div>
             Active mask: <span className="text-white">{activeMask?.displayName ?? 'none'}</span>
           </div>
@@ -125,12 +125,12 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
         </div>
       </header>
 
-      <section className="grid gap-6 lg:grid-cols-[1.3fr,1fr]">
-        <div className="rounded-3xl border border-ink-700 bg-ink-800/80 p-6">
+      <section className="grid gap-4 lg:grid-cols-[1.3fr,1fr]">
+        <div className="masq-panel rounded-xl p-5">
           <h2 className="text-sm uppercase tracking-[0.3em] text-slate-500">Your Masks</h2>
           <div className="mt-4 space-y-3">
             {me.masks.length === 0 ? (
-              <p className="rounded-2xl border border-ink-700 bg-ink-900/80 p-4 text-sm text-slate-400">
+              <p className="masq-panel-muted rounded-xl p-4 text-sm text-slate-400">
                 No masks yet. Create one to participate in rooms and chat.
               </p>
             ) : null}
@@ -197,7 +197,7 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-ink-700 bg-ink-800/80 p-6">
+        <div className="masq-panel rounded-xl p-5">
           <h2 className="text-sm uppercase tracking-[0.3em] text-slate-500">Create Mask</h2>
           <p className="mt-2 text-sm text-slate-400">
             Every room and message is tied to a mask, not your global account.

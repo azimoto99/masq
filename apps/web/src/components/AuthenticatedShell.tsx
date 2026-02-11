@@ -50,8 +50,8 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
-    <div className="mx-auto w-full max-w-[1520px] space-y-3 pb-24">
-      <header className="masq-surface rounded-3xl border border-ink-700 bg-ink-800/90 px-4 py-2.5">
+    <div className="mx-auto w-full max-w-[1520px] space-y-3" style={{ paddingBottom: 'calc(var(--masq-dock-height) + 1rem)' }}>
+      <header className="masq-surface masq-panel rounded-3xl px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Link to="/home" className="rounded-lg border border-ink-700 bg-ink-900 px-2.5 py-1">
@@ -93,7 +93,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
           </div>
         </div>
       </header>
-      <nav className="lg:hidden rounded-2xl border border-ink-700 bg-ink-900/70 p-2">
+      <nav className="masq-panel-muted lg:hidden rounded-2xl p-2">
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {MOBILE_NAV_ITEMS.map((item) => (
             <Link
@@ -112,7 +112,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
       </nav>
       {showGlobalSpacesSidebar ? (
         <>
-          <details className="lg:hidden rounded-2xl border border-ink-700 bg-ink-900/70 p-3">
+          <details className="masq-panel-muted lg:hidden rounded-2xl p-3">
             <summary className="cursor-pointer list-none text-xs uppercase tracking-[0.16em] text-slate-300">
               Open Spaces
             </summary>

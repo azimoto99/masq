@@ -561,7 +561,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
       </div>
 
       <section className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className={`${mobileSidebarOpen ? 'block' : 'hidden'} rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+        <aside className={`${mobileSidebarOpen ? 'block' : 'hidden'} masq-panel rounded-2xl p-3 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
           <div className="flex h-full flex-col gap-3">
             <button
               type="button"
@@ -598,7 +598,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             ) : null}
             </div>
 
-            <form onSubmit={onCreateRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <form onSubmit={onCreateRoom} className="masq-panel-muted space-y-2 rounded-xl p-2.5">
             <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Create Room</h2>
             <input
               data-testid="room-create-title-input"
@@ -653,7 +653,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             </button>
             </form>
 
-            <form onSubmit={onJoinRoom} className="space-y-2 rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <form onSubmit={onJoinRoom} className="masq-panel-muted space-y-2 rounded-xl p-2.5">
             <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Join Room</h2>
             <input
               className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus:border-neon-400"
@@ -671,7 +671,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
             </button>
             </form>
 
-            <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-2.5">
+            <div className="masq-panel-muted rounded-xl p-2.5">
             <h2 className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Room Navigation</h2>
             <p className="mt-1 text-xs text-slate-500">
               Select a room from the shared left Spaces list.
@@ -690,15 +690,15 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
           </div>
         </aside>
 
-        <div className="rounded-2xl border border-ink-700 bg-ink-800/80 p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+        <div className="masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
           {!selectedRoomId ? (
-            <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
+            <div className="masq-panel-muted rounded-2xl p-6 text-sm text-slate-400">
               Pick a room from the left, create one, or join with a room code.
             </div>
           ) : (
             <div className="grid gap-4 lg:grid-cols-[1fr,260px]">
               <section className="space-y-4">
-                <div className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
+                <div className="masq-panel-muted rounded-2xl p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-xl font-semibold text-white">{room?.title ?? 'Room'}</h2>
@@ -771,7 +771,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                   disabledReason={roomExpired ? 'Room expired. Calls are disabled.' : undefined}
                 />
 
-                <div ref={messageListRef} className="h-[52vh] min-h-[280px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/70 p-4 lg:h-[420px]">
+                <div ref={messageListRef} className="h-[52vh] min-h-[280px] overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900/78 p-4 lg:h-[420px]">
                   <div className="space-y-3">
                     {messages.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
                     {messages.map((message) => (
@@ -813,7 +813,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                   </div>
                 </div>
 
-                <form onSubmit={sendMessage} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
+                <form onSubmit={sendMessage} className="masq-panel-muted rounded-2xl p-4">
                   <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Message</label>
                   <textarea
                     data-testid="room-composer-textarea"
@@ -874,7 +874,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                 </form>
               </section>
 
-              <aside className={`${mobileContextOpen ? 'block' : 'hidden'} rounded-2xl border border-ink-700 bg-ink-900/70 p-4 lg:block`}>
+              <aside className={`${mobileContextOpen ? 'block' : 'hidden'} rounded-2xl border border-ink-700 bg-ink-900/78 p-4 lg:block`}>
                 <button
                   type="button"
                   onClick={() => setMobileContextOpen(false)}

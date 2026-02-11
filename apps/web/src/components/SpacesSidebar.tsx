@@ -199,7 +199,7 @@ export function SpacesSidebar({
 
   return (
     <div
-      className={`masq-surface min-h-0 overflow-y-auto border border-ink-700 bg-ink-800/85 p-2.5 ${className ?? ''}`}
+      className={`masq-surface masq-panel min-h-0 overflow-y-auto p-2.5 ${className ?? ''}`}
     >
       <div className="flex h-full flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
