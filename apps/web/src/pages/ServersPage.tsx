@@ -1059,6 +1059,7 @@ export function ServersPage({ me }: ServersPageProps) {
                       activeScreenShare={rtc.activeScreenShare}
                       deafened={rtc.deafened}
                       canModerate={rtc.canModerate}
+                      localMaskId={rtc.activeContext?.maskId ?? currentChannelMaskId}
                       onMuteParticipant={(targetMaskId) => {
                         void rtc.muteParticipant(targetMaskId);
                       }}

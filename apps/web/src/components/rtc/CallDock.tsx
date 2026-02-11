@@ -60,6 +60,7 @@ export function CallDock() {
                   activeScreenShare={rtc.activeScreenShare}
                   deafened={rtc.deafened}
                   canModerate={rtc.canModerate}
+                  localMaskId={rtc.activeContext?.maskId ?? null}
                   onMuteParticipant={(targetMaskId) => {
                     void rtc.muteParticipant(targetMaskId);
                   }}

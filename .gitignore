@@ -10,3 +10,5 @@ packages/**/dist
 coverage
 playwright-report
 test-results
+apps/desktop/release
+apps/desktop/.cache

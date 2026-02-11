@@ -7,6 +7,7 @@ interface VideoStageProps {
   activeScreenShare: RtcParticipantView | null;
   deafened: boolean;
   canModerate: boolean;
+  localMaskId?: string | null;
   onMuteParticipant: (maskId: string) => void;
 }
 
@@ -29,6 +30,26 @@ const getTileMode = (participant: RtcParticipantView): TileMode => {
   return 'none';
 };
 
+const isSelfParticipant = (
+  participant: RtcParticipantView,
+  localIdentity: string | null,
+  localMaskId: string | null | undefined,
+) => {
+  if (participant.isLocal) {
+    return true;
+  }
+
+  if (localIdentity && participant.identity === localIdentity) {
+    return true;
+  }
+
+  if (localMaskId && participant.metadata?.maskId === localMaskId) {
+    return true;
+  }
+
+  return false;
+};
+
 const toCameraFocusKey = (identity: string) => `camera:${identity}`;
 const toScreenFocusKey = (identity: string) => `screen:${identity}`;
 
@@ -37,6 +58,8 @@ const SpeakerTile = ({
   focusKey,
   deafened,
   canModerate,
+  localMaskId,
+  localIdentity,
   onMuteParticipant,
   onToggleFocus,
 }: {
@@ -44,6 +67,8 @@ const SpeakerTile = ({
   focusKey: string | null;
   deafened: boolean;
   canModerate: boolean;
+  localMaskId: string | null | undefined;
+  localIdentity: string | null;
   onMuteParticipant: (maskId: string) => void;
   onToggleFocus: (nextFocusKey: string | null) => void;
 }) => {
@@ -51,6 +76,7 @@ const SpeakerTile = ({
   const mask = participant.metadata;
   const color = mask?.color ?? '#78e6da';
   const maskId = mask?.maskId ?? '';
+  const isSelf = isSelfParticipant(participant, localIdentity, localMaskId);
   const tileMode = getTileMode(participant);
   const tileFocusKey =
     tileMode === 'camera'
@@ -68,16 +94,16 @@ const SpeakerTile = ({
         }`}
       >
         {participant.screenTrack ? (
-          <MediaTrack track={participant.screenTrack} kind="video" muted={participant.isLocal || deafened} />
+          <MediaTrack track={participant.screenTrack} kind="video" muted={isSelf || deafened} />
         ) : participant.cameraTrack ? (
-          <MediaTrack track={participant.cameraTrack} kind="video" muted={participant.isLocal || deafened} />
+          <MediaTrack track={participant.cameraTrack} kind="video" muted={isSelf || deafened} />
         ) : (
           <div className="flex h-full items-center justify-center text-[11px] uppercase tracking-[0.12em] text-slate-500">
             Voice only
           </div>
         )}
 
-        {participant.audioTrack && !participant.isLocal ? (
+        {participant.audioTrack && !isSelf ? (
           <MediaTrack track={participant.audioTrack} kind="audio" muted={deafened} />
         ) : null}
 
@@ -109,7 +135,7 @@ const SpeakerTile = ({
         {participant.isServerMuted ? <span className="text-[10px] text-amber-200">Muted</span> : null}
       </div>
 
-      {canModerate && !participant.isLocal && maskId ? (
+      {canModerate && !isSelf && maskId ? (
         <button
           type="button"
           className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-100 hover:border-amber-400"
@@ -129,6 +155,7 @@ export function VideoStage({
   activeScreenShare,
   deafened,
   canModerate,
+  localMaskId,
   onMuteParticipant,
 }: VideoStageProps) {
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -143,6 +170,10 @@ export function VideoStage({
   );
 
   const activeScreenIdentity = activeScreenShare?.identity ?? null;
+  const localIdentity = useMemo(
+    () => labeledParticipants.find((entry) => entry.participant.isLocal)?.participant.identity ?? null,
+    [labeledParticipants],
+  );
 
   const focusedMedia = useMemo(() => {
     if (!focusKey) {
@@ -192,6 +223,9 @@ export function VideoStage({
   const focusedParticipant = focusedMedia?.entry.participant ?? null;
   const focusedDisplayName = focusedMedia?.entry.displayName ?? null;
   const focusedColor = focusedParticipant?.metadata?.color ?? '#78e6da';
+  const focusedParticipantIsSelf = focusedParticipant
+    ? isSelfParticipant(focusedParticipant, localIdentity, localMaskId)
+    : false;
 
   const sideParticipants = labeledParticipants.filter((entry) => {
     if (!activeScreenIdentity) {
@@ -205,6 +239,9 @@ export function VideoStage({
     ? labeledParticipants.find((entry) => entry.participant.identity === activeScreenIdentity) ?? null
     : null;
   const activeScreenFocusKey = activeScreenIdentity ? toScreenFocusKey(activeScreenIdentity) : null;
+  const activeScreenShareIsSelf = activeScreenShare
+    ? isSelfParticipant(activeScreenShare, localIdentity, localMaskId)
+    : false;
 
   if (participants.length === 0) {
     return null;
@@ -238,9 +275,9 @@ export function VideoStage({
               <MediaTrack
                 track={focusedMedia.kind === 'screen' ? focusedParticipant.screenTrack : focusedParticipant.cameraTrack}
                 kind="video"
-                muted={focusedParticipant.isLocal || deafened}
+                muted={focusedParticipantIsSelf || deafened}
               />
-              {focusedParticipant.audioTrack && !focusedParticipant.isLocal ? (
+              {focusedParticipant.audioTrack && !focusedParticipantIsSelf ? (
                 <MediaTrack
                   track={focusedParticipant.audioTrack}
                   kind="audio"
@@ -279,10 +316,10 @@ export function VideoStage({
                 <MediaTrack
                   track={activeScreenShare.screenTrack}
                   kind="video"
-                  muted={activeScreenShare.isLocal || deafened}
+                  muted={activeScreenShareIsSelf || deafened}
                 />
               ) : null}
-              {activeScreenShare.audioTrack && !activeScreenShare.isLocal ? (
+              {activeScreenShare.audioTrack && !activeScreenShareIsSelf ? (
                 <MediaTrack
                   track={activeScreenShare.audioTrack}
                   kind="audio"
@@ -308,6 +345,8 @@ export function VideoStage({
                   focusKey={focusKey}
                   deafened={deafened}
                   canModerate={canModerate}
+                  localMaskId={localMaskId}
+                  localIdentity={localIdentity}
                   onMuteParticipant={onMuteParticipant}
                   onToggleFocus={onToggleFocus}
                 />
@@ -346,9 +385,9 @@ export function VideoStage({
             <MediaTrack
               track={focusedMedia.kind === 'screen' ? focusedParticipant.screenTrack : focusedParticipant.cameraTrack}
               kind="video"
-              muted={focusedParticipant.isLocal || deafened}
+              muted={focusedParticipantIsSelf || deafened}
             />
-            {focusedParticipant.audioTrack && !focusedParticipant.isLocal ? (
+            {focusedParticipant.audioTrack && !focusedParticipantIsSelf ? (
               <MediaTrack
                 track={focusedParticipant.audioTrack}
                 kind="audio"
@@ -367,6 +406,8 @@ export function VideoStage({
             focusKey={focusKey}
             deafened={deafened}
             canModerate={canModerate}
+            localMaskId={localMaskId}
+            localIdentity={localIdentity}
             onMuteParticipant={onMuteParticipant}
             onToggleFocus={onToggleFocus}
           />

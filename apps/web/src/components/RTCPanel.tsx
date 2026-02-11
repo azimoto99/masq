@@ -98,6 +98,7 @@ export function RTCPanel({
           activeScreenShare={rtc.activeScreenShare}
           deafened={rtc.deafened}
           canModerate={rtc.canModerate}
+          localMaskId={rtc.activeContext?.maskId ?? maskId}
           onMuteParticipant={(maskIdValue) => {
             void rtc.muteParticipant(maskIdValue);
           }}

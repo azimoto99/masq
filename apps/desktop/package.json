@@ -1,0 +1,59 @@
+{
+  "name": "@masq/desktop",
+  "private": true,
+  "version": "0.1.8",
+  "description": "Masq desktop shell",
+  "author": "Masq",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "dev": "pnpm run build:web && pnpm run build:main && cross-env MASQ_BACKEND_URL=https://masq.onrender.com electron .",
+    "build:web": "pnpm --filter @masq/web build",
+    "build:main": "esbuild main.cjs --bundle --platform=node --format=cjs --target=node20 --external:electron --outfile=dist/main.cjs",
+    "build": "pnpm run build:web && pnpm run build:main",
+    "pack": "pnpm run build && electron-builder --dir",
+    "dist:win": "pnpm run build && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^33.3.1",
+    "electron-builder": "^24.13.3",
+    "esbuild": "^0.25.10",
+    "express": "^4.21.2",
+    "http-proxy-middleware": "^3.0.3"
+  },
+  "build": {
+    "appId": "com.masq.desktop",
+    "productName": "Masq",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/main.cjs",
+      {
+        "from": "../web/dist",
+        "to": "web-dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "../web/public/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

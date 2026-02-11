@@ -31,7 +31,9 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 
 ## Commands
 - `pnpm dev`: starts docker dependencies + API + web
+- `pnpm dev:desktop`: starts web dev server + Electron desktop shell (backend proxy defaults to `https://masq.onrender.com`)
 - `pnpm build`: builds all packages
+- `pnpm build:desktop`: builds and packages a Windows NSIS installer (`apps/desktop/release`)
 - `pnpm typecheck`: runs TypeScript project checks across workspaces
 - `pnpm lint`: lints all packages
 - `pnpm test`: runs workspace tests
@@ -196,6 +198,16 @@ MAX_IMAGE_UPLOAD_BYTES=10485760
 - For image/avatar uploads on Render, attach a persistent disk at `/var/data/masq-uploads` and either set `UPLOADS_DIR=/var/data/masq-uploads` or leave `UPLOADS_DIR` unset (the API now defaults to this path on Render).
 - Uploads are private by default: API auth is required and message images are context-authorized (server membership, DM participant, or room membership).
 - For Windows desktop builds (Tauri/Electron), allow microphone/camera/screen-capture permissions.
+
+## Windows Installer (Electron)
+Masq includes a desktop packaging workspace at `apps/desktop`.
+
+- Installer output: `apps/desktop/release/*.exe`
+- Runtime backend target defaults to `https://masq.onrender.com`
+- Override backend at package/run time with:
+  ```bash
+  MASQ_BACKEND_URL=https://your-api-host pnpm build:desktop
+  ```
 
 ## RTC Smoke Test
 1. Start two users in the same server channel and click `Join Call`; confirm two-way audio.

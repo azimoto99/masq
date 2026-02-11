@@ -13,6 +13,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [form, setForm] = useState<LoginRequest>({ email: '', password: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -20,7 +21,11 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setError(null);
 
     try {
-      await login(form);
+      const payload: LoginRequest = {
+        email: form.email.trim().toLowerCase(),
+        password: form.password.replace(/[\r\n]+/g, ''),
+      };
+      await login(payload);
       await onAuthenticated();
       navigate('/home', { replace: true });
     } catch (err) {
@@ -65,11 +70,18 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
             autoComplete="current-password"
             data-testid="login-password-input"
             className="w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white outline-none ring-0 placeholder:text-slate-600 focus:border-neon-400"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             value={form.password}
             onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
             required
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword((current) => !current)}
+            className="mt-2 rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+          >
+            {showPassword ? 'Hide Password' : 'Show Password'}
+          </button>
         </div>
 
         {error ? (

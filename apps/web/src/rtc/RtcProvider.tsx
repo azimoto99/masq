@@ -481,7 +481,15 @@ export function RtcProvider({ children }: { children: ReactNode }) {
           maskId: target.maskId,
         });
 
-        const room = new LiveRoom();
+        const room = new LiveRoom({
+          adaptiveStream: true,
+          dynacast: true,
+          audioCaptureDefaults: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
         roomRef.current = room;
 
         room.on(RoomEvent.ParticipantConnected, bumpRender);

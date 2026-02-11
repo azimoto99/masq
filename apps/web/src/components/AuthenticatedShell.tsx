@@ -13,6 +13,7 @@ interface AuthenticatedShellProps {
 }
 
 const ACTIVE_MASK_STORAGE_KEY = 'masq.activeMaskId';
+const RELEASES_URL = 'https://github.com/azimoto99/masq/releases';
 const MOBILE_NAV_ITEMS: Array<{ label: string; to: string }> = [
   { label: 'Home', to: '/home' },
   { label: 'Servers', to: '/servers' },
@@ -80,6 +81,14 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
             >
               Masks
             </Link>
+            <a
+              href={RELEASES_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300 hover:text-white"
+            >
+              Download Now
+            </a>
             <button
               type="button"
               onClick={() => {
