@@ -380,6 +380,7 @@ export interface MasqRepository {
   listServerMembers(serverId: string): Promise<ServerMemberRecord[]>;
   addServerMember(input: AddServerMemberInput): Promise<ServerMemberRecord>;
   updateServerMemberMask(serverId: string, userId: string, serverMaskId: string): Promise<ServerMemberRecord>;
+  updateServerMemberRole(serverId: string, userId: string, role: ServerMemberRole): Promise<ServerMemberRecord>;
   setServerMemberRoles(serverId: string, userId: string, roleIds: string[]): Promise<ServerMemberRecord>;
   removeServerMember(serverId: string, userId: string): Promise<boolean>;
   createServerRole(input: CreateServerRoleInput): Promise<ServerRoleRecord>;

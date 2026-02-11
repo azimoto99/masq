@@ -454,6 +454,34 @@ class InMemoryRepository implements MasqRepository {
     };
   }
 
+  async updateServerMemberRole(serverId: string, userId: string, role: 'OWNER' | 'ADMIN' | 'MEMBER') {
+    const key = this.serverMemberKey(serverId, userId);
+    const membership = this.serverMembersByComposite.get(key);
+    if (!membership) {
+      throw new Error('Server membership not found');
+    }
+
+    membership.role = role;
+    this.serverMembersByComposite.set(key, membership);
+
+    const mask = this.masksById.get(membership.serverMaskId);
+    if (!mask) {
+      throw new Error('Mask not found for server membership');
+    }
+
+    const updatedRoleIds = [...(this.serverRoleIdsByMember.get(key) ?? [])];
+    return {
+      serverId: membership.serverId,
+      userId: membership.userId,
+      role: membership.role,
+      roleIds: updatedRoleIds,
+      permissions: this.serverPermissionsForRoleIds(updatedRoleIds),
+      joinedAt: membership.joinedAt,
+      serverMaskId: membership.serverMaskId,
+      serverMask: mask,
+    };
+  }
+
   async setServerMemberRoles(serverId: string, userId: string, roleIds: string[]) {
     const key = this.serverMemberKey(serverId, userId);
     const membership = this.serverMembersByComposite.get(key);
@@ -2605,6 +2633,101 @@ describe('auth and mask flows', () => {
     expect(adminServerStateResponse.statusCode).toBe(200);
     const adminServerState = GetServerResponseSchema.parse(adminServerStateResponse.json());
     expect(adminServerState.myPermissions).toContain('ManageMembers');
+  });
+
+  it('allows owners to promote and demote member base role via role assignment endpoint', async () => {
+    const ownerCookie = await registerUser(app, 'owner-member-role@example.com');
+    const memberCookie = await registerUser(app, 'member-member-role@example.com');
+
+    await createMask(app, ownerCookie, 'Owner Role Flow');
+    const memberMask = await createMask(app, memberCookie, 'Member Role Flow');
+
+    const createServerResponse = await app.inject({
+      method: 'POST',
+      url: '/servers',
+      headers: { cookie: ownerCookie },
+      payload: {
+        name: 'Guild Member Role Flow',
+      },
+    });
+    expect(createServerResponse.statusCode).toBe(201);
+    const server = CreateServerResponseSchema.parse(createServerResponse.json()).server;
+
+    const inviteResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/invites`,
+      headers: { cookie: ownerCookie },
+      payload: {
+        maxUses: 5,
+      },
+    });
+    expect(inviteResponse.statusCode).toBe(201);
+    const invite = CreateServerInviteResponseSchema.parse(inviteResponse.json()).invite;
+
+    const memberJoinResponse = await app.inject({
+      method: 'POST',
+      url: '/servers/join',
+      headers: { cookie: memberCookie },
+      payload: {
+        inviteCode: invite.code,
+        serverMaskId: memberMask.id,
+      },
+    });
+    expect(memberJoinResponse.statusCode).toBe(200);
+
+    const memberMeResponse = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { cookie: memberCookie },
+    });
+    expect(memberMeResponse.statusCode).toBe(200);
+    const memberUserId = MeResponseSchema.parse(memberMeResponse.json()).user.id;
+
+    const promoteResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/members/${memberUserId}/roles`,
+      headers: { cookie: ownerCookie },
+      payload: {
+        roleIds: [],
+        memberRole: 'ADMIN',
+      },
+    });
+    expect(promoteResponse.statusCode).toBe(200);
+    const promotePayload = SetServerMemberRolesResponseSchema.parse(promoteResponse.json());
+    expect(promotePayload.member.role).toBe('ADMIN');
+
+    const adminChannelCreateResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/channels`,
+      headers: { cookie: memberCookie },
+      payload: {
+        name: 'admin-capability-room',
+      },
+    });
+    expect(adminChannelCreateResponse.statusCode).toBe(201);
+
+    const demoteResponse = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/members/${memberUserId}/roles`,
+      headers: { cookie: ownerCookie },
+      payload: {
+        roleIds: [],
+        memberRole: 'MEMBER',
+      },
+    });
+    expect(demoteResponse.statusCode).toBe(200);
+    const demotePayload = SetServerMemberRolesResponseSchema.parse(demoteResponse.json());
+    expect(demotePayload.member.role).toBe('MEMBER');
+
+    const memberChannelCreateForbidden = await app.inject({
+      method: 'POST',
+      url: `/servers/${server.id}/channels`,
+      headers: { cookie: memberCookie },
+      payload: {
+        name: 'member-should-fail',
+      },
+    });
+    expect(memberChannelCreateForbidden.statusCode).toBe(403);
   });
 
   it('supports CHANNEL_MASK mode and per-channel mask selection', async () => {

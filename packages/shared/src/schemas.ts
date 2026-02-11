@@ -385,6 +385,7 @@ export const ListServerRolesResponseSchema = z.object({
 
 export const SetServerMemberRolesRequestSchema = z.object({
   roleIds: z.array(z.string().uuid()).max(MAX_SERVER_ROLE_ASSIGNMENTS),
+  memberRole: z.enum(['ADMIN', 'MEMBER']).optional(),
 });
 
 export const SetServerMemberRolesResponseSchema = z.object({

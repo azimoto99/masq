@@ -338,6 +338,30 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
       return serializeServerMember(membership);
     },
 
+    async updateServerMemberRole(serverId: string, userId: string, role: 'OWNER' | 'ADMIN' | 'MEMBER') {
+      const membership = await prisma.serverMember.update({
+        where: {
+          serverId_userId: {
+            serverId,
+            userId,
+          },
+        },
+        data: {
+          role,
+        },
+        include: {
+          serverMask: true,
+          memberRoles: {
+            include: {
+              role: true,
+            },
+          },
+        },
+      });
+
+      return serializeServerMember(membership);
+    },
+
     async setServerMemberRoles(serverId: string, userId: string, roleIds: string[]) {
       await prisma.$transaction(async (tx) => {
         await tx.serverMemberRole.deleteMany({

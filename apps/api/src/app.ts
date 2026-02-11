@@ -193,6 +193,7 @@ const DM_MESSAGE_RATE_LIMIT_COUNT = 10;
 const CHANNEL_MESSAGE_RATE_LIMIT_WINDOW_MS = 4000;
 const CHANNEL_MESSAGE_RATE_LIMIT_COUNT = 10;
 const WS_OPEN_STATE = 1;
+const FALLBACK_UPLOADS_DIRECTORY = './uploads';
 const FRIEND_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const FRIEND_CODE_LENGTH = 8;
 
@@ -732,7 +733,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
   const dmSockets = new Map<string, Set<WebSocket>>();
   const channelSockets = new Map<string, Set<WebSocket>>();
   const roomExpiryTimers = new Map<string, NodeJS.Timeout>();
-  const uploadRoot = path.resolve(process.cwd(), env.UPLOADS_DIR);
+  const uploadRoot = path.resolve(process.cwd(), env.UPLOADS_DIR ?? FALLBACK_UPLOADS_DIRECTORY);
   await mkdir(uploadRoot, { recursive: true });
   app.log.info({ uploadRoot }, 'upload_storage_ready');
   const livekitUrl = env.LIVEKIT_URL ?? null;
@@ -3257,6 +3258,10 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         reply.code(400);
         return { message: 'One or more roles do not belong to this server' };
       }
+    }
+
+    if (body.memberRole && body.memberRole !== targetMembership.role) {
+      await repo.updateServerMemberRole(params.serverId, params.userId, body.memberRole);
     }
 
     const updated = await repo.setServerMemberRoles(params.serverId, params.userId, uniqueRoleIds);

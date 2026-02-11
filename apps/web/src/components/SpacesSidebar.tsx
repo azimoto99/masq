@@ -188,6 +188,15 @@ export function SpacesSidebar({
   const isSpaceActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
+  const onOpenServerAccess = () => {
+    if (onOpenServerDialog) {
+      onOpenServerDialog();
+      return;
+    }
+
+    navigate('/servers?serverDialog=create');
+  };
+
   return (
     <div
       className={`masq-surface min-h-0 overflow-y-auto border border-ink-700 bg-ink-800/80 p-3 ${className ?? ''}`}
@@ -198,15 +207,13 @@ export function SpacesSidebar({
             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Spaces</p>
             <h1 className="text-base font-semibold text-white">Switch</h1>
           </div>
-          {onOpenServerDialog ? (
-            <button
-              type="button"
-              onClick={onOpenServerDialog}
-              className="rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400"
-            >
-              Create / Join
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={onOpenServerAccess}
+            className="rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400"
+          >
+            Create / Join
+          </button>
         </div>
 
         <div className="space-y-1.5">

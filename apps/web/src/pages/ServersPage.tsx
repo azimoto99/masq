@@ -11,9 +11,10 @@ import {
   type ServerChannelMemberState,
   type ServerListItem,
   type ServerMember,
+  type ServerMemberRole,
 } from '@masq/shared';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ApiError,
   buildUploadUrl,
@@ -74,6 +75,7 @@ const hasPermission = (permissions: readonly ServerPermission[], permission: Ser
 
 export function ServersPage({ me }: ServersPageProps) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const params = useParams<{ serverId: string; channelId: string }>();
   const selectedServerId = params.serverId ?? null;
   const selectedChannelId = params.channelId ?? null;
@@ -133,6 +135,7 @@ export function ServersPage({ me }: ServersPageProps) {
   );
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [memberRoleSelections, setMemberRoleSelections] = useState<Record<string, string[]>>({});
+  const [memberBaseRoles, setMemberBaseRoles] = useState<Record<string, ServerMemberRole>>({});
   const [saveMemberRolesPendingUserId, setSaveMemberRolesPendingUserId] = useState<string | null>(null);
   const [contextTab, setContextTab] = useState<'members' | 'roles' | 'call'>('members');
   const [serverDialogOpen, setServerDialogOpen] = useState(false);
@@ -141,6 +144,7 @@ export function ServersPage({ me }: ServersPageProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const globalActiveMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY) ?? me.masks[0]?.id ?? null;
+  const serverDialogQuery = searchParams.get('serverDialog');
 
   const selectedChannel = useMemo(
     () => serverDetails?.channels.find((channel) => channel.id === selectedChannelId) ?? null,
@@ -276,6 +280,7 @@ export function ServersPage({ me }: ServersPageProps) {
   useEffect(() => {
     if (!serverDetails) {
       setMemberRoleSelections({});
+      setMemberBaseRoles({});
       return;
     }
 
@@ -284,6 +289,9 @@ export function ServersPage({ me }: ServersPageProps) {
         serverDetails.members.map((member) => [member.userId, [...member.roleIds]]),
       ),
     );
+    setMemberBaseRoles(
+      Object.fromEntries(serverDetails.members.map((member) => [member.userId, member.role])),
+    );
   }, [serverDetails]);
 
   useEffect(() => {
@@ -291,6 +299,19 @@ export function ServersPage({ me }: ServersPageProps) {
       setContextTab('members');
     }
   }, [canManageMembers, contextTab]);
+
+  useEffect(() => {
+    if (serverDialogQuery !== 'create' && serverDialogQuery !== 'join') {
+      return;
+    }
+
+    setServerDialogTab(serverDialogQuery);
+    setServerDialogOpen(true);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('serverDialog');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, serverDialogQuery, setSearchParams]);
 
   useEffect(() => {
     setMobileSidebarOpen(false);
@@ -626,11 +647,15 @@ export function ServersPage({ me }: ServersPageProps) {
     }
 
     const roleIds = memberRoleSelections[targetUserId] ?? [];
+    const selectedMemberRole = memberBaseRoles[targetUserId];
     setSaveMemberRolesPendingUserId(targetUserId);
     setDetailsError(null);
     try {
       await setServerMemberRoles(selectedServerId, targetUserId, {
         roleIds,
+        ...(selectedMemberRole === 'ADMIN' || selectedMemberRole === 'MEMBER'
+          ? { memberRole: selectedMemberRole }
+          : {}),
       });
       await Promise.all([reloadServerRoles(selectedServerId), reloadServerDetails(selectedServerId)]);
     } catch (err) {
@@ -1249,6 +1274,26 @@ export function ServersPage({ me }: ServersPageProps) {
                             {canManageMembers && member.role !== 'OWNER' ? (
                               <div className="mt-2 rounded-md border border-ink-700 bg-ink-800/80 p-2">
                                 <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Assign Roles</p>
+                                <label className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                                  Membership Role
+                                </label>
+                                <select
+                                  className="mt-1 w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
+                                  value={memberBaseRoles[member.userId] ?? member.role}
+                                  onChange={(event) => {
+                                    const nextRole = event.target.value as ServerMemberRole;
+                                    if (nextRole === 'OWNER') {
+                                      return;
+                                    }
+                                    setMemberBaseRoles((current) => ({
+                                      ...current,
+                                      [member.userId]: nextRole,
+                                    }));
+                                  }}
+                                >
+                                  <option value="MEMBER">MEMBER</option>
+                                  <option value="ADMIN">ADMIN</option>
+                                </select>
                                 <div className="mt-1 space-y-1">
                                   {serverRoles.map((role) => {
                                     const selected = memberRoleSelections[member.userId] ?? member.roleIds;
