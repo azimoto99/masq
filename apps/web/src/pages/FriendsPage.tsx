@@ -332,7 +332,9 @@ export function FriendsPage({ me }: FriendsPageProps) {
             {!loading && friends.length === 0 ? <p className="text-sm text-slate-500">No friends yet.</p> : null}
             {friends.map((friend) => (
               <article key={friend.id} className="rounded-2xl border border-ink-700 bg-ink-900/70 p-4">
-                <p className="text-sm text-white">{friend.email}</p>
+                <p className="text-sm text-white">
+                  {friend.defaultMask?.displayName ?? 'Masked Contact'}
+                </p>
                 <p className="mt-1 font-mono text-[11px] text-cyan-200">Code: {friend.friendCode}</p>
                 {friend.defaultMask ? (
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
