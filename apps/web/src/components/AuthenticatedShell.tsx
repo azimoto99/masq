@@ -1,10 +1,11 @@
 import type { MeResponse } from '@masq/shared';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo';
 import { SpacesSidebar } from './SpacesSidebar';
 import { CallDock } from './rtc/CallDock';
+import { useRtc } from '../rtc/RtcProvider';
 
 interface AuthenticatedShellProps {
   me: MeResponse;
@@ -14,25 +15,11 @@ interface AuthenticatedShellProps {
 
 const ACTIVE_MASK_STORAGE_KEY = 'masq.activeMaskId';
 const RELEASES_URL = 'https://github.com/azimoto99/masq/releases';
-const MOBILE_NAV_ITEMS: Array<{ label: string; to: string }> = [
-  { label: 'Home', to: '/home' },
-  { label: 'Servers', to: '/servers' },
-  { label: 'Friends', to: '/friends' },
-  { label: 'DMs', to: '/dm' },
-  { label: 'Rooms', to: '/rooms' },
-  { label: 'Masks', to: '/masks' },
-];
-const DESKTOP_NAV_ITEMS: Array<{ label: string; to: string }> = [
-  { label: 'Home', to: '/home' },
-  { label: 'Friends', to: '/friends' },
-  { label: 'DMs', to: '/dm' },
-  { label: 'Servers', to: '/servers' },
-  { label: 'Rooms', to: '/rooms' },
-];
 
 export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const rtc = useRtc();
   const [loggingOut, setLoggingOut] = useState(false);
 
   const persistedMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY);
@@ -54,17 +41,16 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
       location.pathname.startsWith('/masks') ||
       location.pathname.startsWith('/home'));
 
-  const isNavPathActive = (path: string) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`);
+  const shellBottomPadding = rtc.sessionId ? 'calc(var(--masq-dock-height) + 1rem)' : '1rem';
 
   return (
-    <div className="mx-auto w-full max-w-[1520px] space-y-3" style={{ paddingBottom: 'calc(var(--masq-dock-height) + 1rem)' }}>
+    <div className="w-full space-y-3" style={{ paddingBottom: shellBottomPadding }}>
       <header className="masq-surface masq-panel rounded-3xl px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link to="/home" className="rounded-lg border border-ink-700 bg-ink-900 px-2.5 py-1">
+            <div className="rounded-lg border border-ink-700 bg-ink-900 px-2.5 py-1">
               <BrandLogo className="h-7 w-auto select-none" />
-            </Link>
+            </div>
             <div>
               <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Masq</p>
               <p className="text-xs text-slate-300">{me.user.email}</p>
@@ -82,12 +68,6 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
                 {activeMask?.displayName ?? 'none'}
               </p>
             </div>
-            <Link
-              to="/masks"
-              className="rounded-md border border-ink-700 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
-            >
-              Masks
-            </Link>
             <a
               href={RELEASES_URL}
               target="_blank"
@@ -108,42 +88,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
             </button>
           </div>
         </div>
-
-        <nav className="mt-3 hidden lg:block">
-          <div className="flex flex-wrap gap-1.5 rounded-xl border border-ink-700 bg-ink-900/75 p-1.5">
-            {DESKTOP_NAV_ITEMS.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`rounded-md border px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition ${
-                  isNavPathActive(item.to)
-                    ? 'border-neon-400/50 bg-neon-400/10 text-neon-100'
-                    : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600 hover:text-white'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </nav>
       </header>
-      <nav className="masq-panel-muted lg:hidden rounded-2xl p-2">
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {MOBILE_NAV_ITEMS.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] transition ${
-                isNavPathActive(item.to)
-                  ? 'border-neon-400/50 bg-neon-400/10 text-neon-100'
-                  : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600 hover:text-white'
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      </nav>
       {showGlobalSpacesSidebar ? (
         <>
           <details className="masq-panel-muted lg:hidden rounded-2xl p-3">

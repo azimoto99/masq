@@ -120,7 +120,7 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4">
+    <div className="w-full space-y-4">
       <header className="masq-panel flex flex-col gap-4 rounded-2xl p-5 md:flex-row md:items-center md:justify-between">
         <div>
           <BrandLogo />

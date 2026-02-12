@@ -209,7 +209,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4">
+    <div className="w-full space-y-4">
       <header className="masq-panel rounded-2xl p-5">
         <div>
           <BrandLogo />

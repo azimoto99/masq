@@ -33,6 +33,10 @@ export function CallDock() {
   );
   const localSpeaking = Boolean(localParticipant?.isSpeaking);
 
+  if (!hasSession) {
+    return null;
+  }
+
   return (
     <>
       <RemoteAudioLayer
@@ -46,7 +50,7 @@ export function CallDock() {
           className="fixed left-0 right-0 z-40 px-3 sm:px-6"
           style={{ bottom: 'calc(var(--masq-dock-height) + 0.65rem)' }}
         >
-          <div className="mx-auto max-w-[1240px] overflow-hidden rounded-xl border border-ink-600 bg-ink-900 shadow-2xl shadow-black/45">
+          <div className="w-full overflow-hidden rounded-xl border border-ink-600 bg-ink-900 shadow-2xl shadow-black/45">
             <header className="flex items-center justify-between gap-2 border-b border-ink-700 px-3 py-2">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Call Stage</p>
@@ -103,7 +107,7 @@ export function CallDock() {
       ) : null}
 
       <section className="fixed bottom-3 left-0 right-0 z-40 px-3 sm:px-6">
-        <div className="mx-auto max-w-[1240px]">
+        <div className="w-full">
           <div
             className={`rounded-xl border bg-ink-900 px-3 py-2 shadow-xl shadow-black/50 transition ${
               hasLiveConnection

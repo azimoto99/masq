@@ -27,7 +27,14 @@ const toServerGlyph = (name: string) => {
   return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
 };
 
-const STATIC_SPACES: Array<{ key: 'friends' | 'dm' | 'rooms'; label: string; to: string; testId?: string }> = [
+const STATIC_SPACES: Array<{
+  key: 'home' | 'masks' | 'friends' | 'dm' | 'rooms';
+  label: string;
+  to: string;
+  testId?: string;
+}> = [
+  { key: 'home', label: 'Home', to: '/home' },
+  { key: 'masks', label: 'Masks', to: '/masks' },
   { key: 'friends', label: 'Friends', to: '/friends' },
   { key: 'dm', label: 'DMs', to: '/dm' },
   { key: 'rooms', label: 'Rooms', to: '/rooms', testId: 'open-rooms-button' },

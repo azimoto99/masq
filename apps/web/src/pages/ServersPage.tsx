@@ -1,5 +1,4 @@
 import {
-  ALL_SERVER_PERMISSIONS,
   ClientSocketEventSchema,
   MAX_ROOM_MESSAGE_LENGTH,
   ServerSocketEventSchema,
@@ -18,7 +17,6 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ApiError,
   buildUploadUrl,
-  createServerRole,
   createServer,
   createServerChannel,
   createServerInvite,
@@ -34,13 +32,11 @@ import {
   setServerMask,
   uploadImage,
   updateServerSettings,
-  updateServerRole,
 } from '../lib/api';
 import { createRealtimeSocket } from '../lib/realtime';
 import { MaskAvatar } from '../components/MaskAvatar';
 import { SpacesSidebar } from '../components/SpacesSidebar';
 import { CallBar } from '../components/rtc/CallBar';
-import { CallPanel } from '../components/rtc/CallPanel';
 import { VideoStage } from '../components/rtc/VideoStage';
 import { useRtcScope } from '../rtc/RtcProvider';
 
@@ -110,20 +106,13 @@ export function ServersPage({ me }: ServersPageProps) {
   const [friendRequestPendingUserId, setFriendRequestPendingUserId] = useState<string | null>(null);
   const [friendRequestNotice, setFriendRequestNotice] = useState<string | null>(null);
   const [memberActionMenuUserId, setMemberActionMenuUserId] = useState<string | null>(null);
+  const [memberRoleEditorUserId, setMemberRoleEditorUserId] = useState<string | null>(null);
   const [rolesPayload, setRolesPayload] = useState<ListServerRolesResponse | null>(null);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesError, setRolesError] = useState<string | null>(null);
-  const [createRoleName, setCreateRoleName] = useState('Moderator');
-  const [createRolePermissions, setCreateRolePermissions] = useState<ServerPermission[]>([]);
-  const [createRolePending, setCreateRolePending] = useState(false);
-  const [roleDrafts, setRoleDrafts] = useState<Record<string, { name: string; permissions: ServerPermission[] }>>(
-    {},
-  );
-  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [memberRoleSelections, setMemberRoleSelections] = useState<Record<string, string[]>>({});
   const [memberBaseRoles, setMemberBaseRoles] = useState<Record<string, ServerMemberRole>>({});
   const [saveMemberRolesPendingUserId, setSaveMemberRolesPendingUserId] = useState<string | null>(null);
-  const [contextTab, setContextTab] = useState<'members' | 'roles' | 'call'>('members');
   const [serverDialogOpen, setServerDialogOpen] = useState(false);
   const [serverDialogTab, setServerDialogTab] = useState<'create' | 'join'>('create');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -229,17 +218,6 @@ export function ServersPage({ me }: ServersPageProps) {
     try {
       const response = await listServerRoles(serverId);
       setRolesPayload(response);
-      setRoleDrafts(
-        Object.fromEntries(
-          response.roles.map((role) => [
-            role.id,
-            {
-              name: role.name,
-              permissions: [...role.permissions],
-            },
-          ]),
-        ),
-      );
     } catch (err) {
       setRolesPayload(null);
       setRolesError(err instanceof ApiError ? err.message : 'Failed to load server roles');
@@ -258,8 +236,9 @@ export function ServersPage({ me }: ServersPageProps) {
       setDetailsError(null);
       setRolesPayload(null);
       setRolesError(null);
-      setRoleDrafts({});
       setMemberRoleSelections({});
+      setMemberRoleEditorUserId(null);
+      setMemberActionMenuUserId(null);
       setChannelMembers([]);
       setChannelMessages([]);
       return;
@@ -273,6 +252,8 @@ export function ServersPage({ me }: ServersPageProps) {
     if (!serverDetails) {
       setMemberRoleSelections({});
       setMemberBaseRoles({});
+      setMemberRoleEditorUserId(null);
+      setMemberActionMenuUserId(null);
       return;
     }
 
@@ -285,12 +266,6 @@ export function ServersPage({ me }: ServersPageProps) {
       Object.fromEntries(serverDetails.members.map((member) => [member.userId, member.role])),
     );
   }, [serverDetails]);
-
-  useEffect(() => {
-    if (contextTab === 'roles' && !canManageMembers) {
-      setContextTab('members');
-    }
-  }, [canManageMembers, contextTab]);
 
   useEffect(() => {
     if (serverDialogQuery !== 'create' && serverDialogQuery !== 'join') {
@@ -584,62 +559,13 @@ export function ServersPage({ me }: ServersPageProps) {
     }
   };
 
-  const togglePermission = (
-    current: readonly ServerPermission[],
-    permission: ServerPermission,
-  ): ServerPermission[] => {
-    if (current.includes(permission)) {
-      return current.filter((value) => value !== permission);
-    }
-    return [...current, permission];
+  const onToggleMemberActions = (targetUserId: string) => {
+    setMemberActionMenuUserId((current) => (current === targetUserId ? null : targetUserId));
+    setMemberRoleEditorUserId(null);
   };
 
-  const onCreateRole = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selectedServerId) {
-      return;
-    }
-
-    setCreateRolePending(true);
-    setRolesError(null);
-    try {
-      await createServerRole(selectedServerId, {
-        name: createRoleName,
-        permissions: createRolePermissions,
-      });
-      setCreateRoleName('Role');
-      setCreateRolePermissions([]);
-      await Promise.all([reloadServerRoles(selectedServerId), reloadServerDetails(selectedServerId)]);
-    } catch (err) {
-      setRolesError(err instanceof ApiError ? err.message : 'Failed to create role');
-    } finally {
-      setCreateRolePending(false);
-    }
-  };
-
-  const onSaveRole = async (roleId: string) => {
-    if (!selectedServerId) {
-      return;
-    }
-
-    const draft = roleDrafts[roleId];
-    if (!draft) {
-      return;
-    }
-
-    setSavingRoleId(roleId);
-    setRolesError(null);
-    try {
-      await updateServerRole(selectedServerId, roleId, {
-        name: draft.name,
-        permissions: draft.permissions,
-      });
-      await Promise.all([reloadServerRoles(selectedServerId), reloadServerDetails(selectedServerId)]);
-    } catch (err) {
-      setRolesError(err instanceof ApiError ? err.message : 'Failed to update role');
-    } finally {
-      setSavingRoleId(null);
-    }
+  const onToggleMemberRoleEditor = (targetUserId: string) => {
+    setMemberRoleEditorUserId((current) => (current === targetUserId ? null : targetUserId));
   };
 
   const onSaveMemberRoles = async (targetUserId: string) => {
@@ -659,6 +585,8 @@ export function ServersPage({ me }: ServersPageProps) {
           : {}),
       });
       await Promise.all([reloadServerRoles(selectedServerId), reloadServerDetails(selectedServerId)]);
+      setMemberRoleEditorUserId(null);
+      setMemberActionMenuUserId(null);
     } catch (err) {
       setDetailsError(err instanceof ApiError ? err.message : 'Failed to update member roles');
     } finally {
@@ -692,6 +620,8 @@ export function ServersPage({ me }: ServersPageProps) {
     try {
       await kickServerMember(selectedServerId, targetUserId);
       await Promise.all([reloadServerRoles(selectedServerId), reloadServerDetails(selectedServerId)]);
+      setMemberRoleEditorUserId(null);
+      setMemberActionMenuUserId(null);
     } catch (err) {
       setDetailsError(err instanceof ApiError ? err.message : 'Failed to kick member');
     } finally {
@@ -711,6 +641,7 @@ export function ServersPage({ me }: ServersPageProps) {
       await sendFriendRequest({ toUserId: targetUserId });
       setFriendRequestNotice('Friend request sent');
       setMemberActionMenuUserId(null);
+      setMemberRoleEditorUserId(null);
     } catch (err) {
       setDetailsError(err instanceof ApiError ? err.message : 'Failed to send friend request');
     } finally {
@@ -764,12 +695,10 @@ export function ServersPage({ me }: ServersPageProps) {
   };
 
   const canJoinRtc = Boolean(selectedChannel && currentChannelMaskId);
-  const isConnectedRtc =
-    rtc.connectionState === 'connected' || rtc.connectionState === 'reconnecting' || rtc.inAnotherCall;
 
   return (
     <>
-      <div className="mx-auto w-full max-w-[1520px]">
+      <div className="w-full">
         <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
           <button
             type="button"
@@ -795,7 +724,7 @@ export function ServersPage({ me }: ServersPageProps) {
                 : 'border-ink-700 bg-ink-900/80 text-slate-300'
             }`}
           >
-            {mobileContextOpen ? 'Hide Context' : 'Show Context'}
+            {mobileContextOpen ? 'Hide Members' : 'Show Members'}
           </button>
         </div>
         <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
@@ -1195,336 +1124,186 @@ export function ServersPage({ me }: ServersPageProps) {
                 onClick={() => setMobileContextOpen(false)}
                 className="rounded-md border border-ink-700 bg-ink-900/80 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-300 xl:hidden"
               >
-                Close Context
+                Close Members
               </button>
               {!selectedServerId || !serverDetails ? (
                 <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3 text-sm text-slate-500">
-                  Select a server to view members, roles, and call details.
+                  Select a server to view members.
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-3 gap-1 rounded-xl border border-ink-700 bg-ink-900/70 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setContextTab('members')}
-                      className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition ${
-                        contextTab === 'members'
-                          ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
-                          : 'border border-transparent text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Members
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setContextTab('roles')}
-                      disabled={!canManageMembers}
-                      className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        contextTab === 'roles'
-                          ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
-                          : 'border border-transparent text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Roles
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setContextTab('call')}
-                      className={`rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition ${
-                        contextTab === 'call'
-                          ? 'border border-neon-400/45 bg-neon-400/10 text-neon-100'
-                          : 'border border-transparent text-slate-400 hover:text-slate-200'
-                      } ${isConnectedRtc ? 'masq-live-ring' : ''}`}
-                    >
-                      Call
-                    </button>
+                  <div className="flex items-center justify-between rounded-xl border border-ink-700 bg-ink-900/70 px-2.5 py-1.5">
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Members</p>
+                    <span className="rounded-full border border-ink-700 bg-ink-800 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-slate-400">
+                      {serverDetails.members.length}
+                    </span>
                   </div>
 
                   <div className="flex-1 overflow-y-auto">
-                    {contextTab === 'members' ? (
-                      <div className="space-y-2">
-                        {serverDetails.members.map((member) => (
+                    <div className="space-y-2">
+                      {rolesLoading ? <p className="text-xs text-slate-500">Loading roles...</p> : null}
+                      {rolesError ? (
+                        <p className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
+                          {rolesError}
+                        </p>
+                      ) : null}
+
+                      {serverDetails.members.map((member) => {
+                        const customRoleNames =
+                          member.roleIds.length === 0
+                            ? 'none'
+                            : member.roleIds
+                                .map((roleId) => serverRoles.find((role) => role.id === roleId)?.name ?? 'unknown')
+                                .join(', ');
+                        const isMenuOpen = memberActionMenuUserId === member.userId;
+                        const isRoleEditorOpen = memberRoleEditorUserId === member.userId;
+                        const canAssignRoles = canManageMembers && member.role !== 'OWNER';
+
+                        return (
                           <article key={member.userId} className="rounded-lg border border-ink-700 bg-ink-900/75 p-2.5">
                             <div className="flex items-center justify-between gap-2">
-                              {member.userId === me.user.id ? (
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <MaskAvatar
-                                    displayName={member.serverMask.displayName}
-                                    color={member.serverMask.color}
-                                    avatarUploadId={member.serverMask.avatarUploadId}
-                                    sizeClassName="h-6 w-6"
-                                    textClassName="text-[9px]"
-                                  />
+                              <button
+                                type="button"
+                                onClick={() => onToggleMemberActions(member.userId)}
+                                className={`flex min-w-0 items-center gap-2 rounded-md border px-1 py-0.5 text-left transition ${
+                                  isMenuOpen
+                                    ? 'border-neon-400/40 bg-neon-400/10'
+                                    : 'border-transparent hover:border-ink-600'
+                                }`}
+                                title="Open member actions"
+                              >
+                                <MaskAvatar
+                                  displayName={member.serverMask.displayName}
+                                  color={member.serverMask.color}
+                                  avatarUploadId={member.serverMask.avatarUploadId}
+                                  sizeClassName="h-6 w-6"
+                                  textClassName="text-[9px]"
+                                />
+                                <div className="min-w-0">
                                   <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
+                                  {member.userId === me.user.id ? (
+                                    <p className="text-[10px] uppercase tracking-[0.12em] text-neon-200">You</p>
+                                  ) : null}
                                 </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setMemberActionMenuUserId((current) =>
-                                      current === member.userId ? null : member.userId,
-                                    )
-                                  }
-                                  className="flex min-w-0 items-center gap-2 rounded-md border border-transparent px-1 py-0.5 text-left hover:border-ink-600"
-                                  title="Open member actions"
-                                >
-                                  <MaskAvatar
-                                    displayName={member.serverMask.displayName}
-                                    color={member.serverMask.color}
-                                    avatarUploadId={member.serverMask.avatarUploadId}
-                                    sizeClassName="h-6 w-6"
-                                    textClassName="text-[9px]"
-                                  />
-                                  <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
-                                </button>
-                              )}
-                              <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                                {member.role}
-                              </span>
+                              </button>
+                              <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{member.role}</span>
                             </div>
                             <p className="mt-1 truncate text-[10px] uppercase tracking-[0.12em] text-slate-500">
                               {onlineUserIds.has(member.userId) ? 'online in channel' : 'offline'}
                             </p>
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              Roles:{' '}
-                              {member.roleIds.length === 0
-                                ? 'none'
-                                : member.roleIds
-                                    .map((roleId) => serverRoles.find((role) => role.id === roleId)?.name ?? 'unknown')
-                                    .join(', ')}
-                            </p>
+                            <p className="mt-1 text-[10px] text-slate-400">Roles: {customRoleNames}</p>
 
-                            {memberActionMenuUserId === member.userId && member.userId !== me.user.id ? (
-                              <div className="mt-2 rounded-md border border-ink-700 bg-ink-800/80 p-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void onSendFriendRequestByUserId(member.userId);
-                                  }}
-                                  disabled={friendRequestPendingUserId === member.userId}
-                                  className="w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {friendRequestPendingUserId === member.userId ? 'Sending...' : 'Add Friend'}
-                                </button>
-                              </div>
-                            ) : null}
-
-                            {canManageMembers && member.role !== 'OWNER' ? (
-                              <div className="mt-2 rounded-md border border-ink-700 bg-ink-800/80 p-2">
-                                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Assign Roles</p>
-                                <label className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                                  Membership Role
-                                </label>
-                                <select
-                                  className="mt-1 w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-                                  value={memberBaseRoles[member.userId] ?? member.role}
-                                  onChange={(event) => {
-                                    const nextRole = event.target.value as ServerMemberRole;
-                                    if (nextRole === 'OWNER') {
-                                      return;
-                                    }
-                                    setMemberBaseRoles((current) => ({
-                                      ...current,
-                                      [member.userId]: nextRole,
-                                    }));
-                                  }}
-                                >
-                                  <option value="MEMBER">MEMBER</option>
-                                  <option value="ADMIN">ADMIN</option>
-                                </select>
-                                <div className="mt-1 space-y-1">
-                                  {serverRoles.map((role) => {
-                                    const selected = memberRoleSelections[member.userId] ?? member.roleIds;
-                                    const checked = selected.includes(role.id);
-                                    return (
-                                      <label key={role.id} className="flex items-center gap-2 text-[11px] text-slate-300">
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() => {
-                                            setMemberRoleSelections((current) => {
-                                              const currentRoleIds = current[member.userId] ?? member.roleIds;
-                                              const nextRoleIds = currentRoleIds.includes(role.id)
-                                                ? currentRoleIds.filter((value) => value !== role.id)
-                                                : [...currentRoleIds, role.id];
-                                              return {
-                                                ...current,
-                                                [member.userId]: nextRoleIds,
-                                              };
-                                            });
-                                          }}
-                                        />
-                                        <span>{role.name}</span>
-                                      </label>
-                                    );
-                                  })}
-                                  {serverRoles.length === 0 ? (
-                                    <p className="text-[11px] text-slate-500">No custom roles yet.</p>
-                                  ) : null}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void onSaveMemberRoles(member.userId);
-                                  }}
-                                  disabled={saveMemberRolesPendingUserId === member.userId}
-                                  className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {saveMemberRolesPendingUserId === member.userId ? 'Saving...' : 'Save Roles'}
-                                </button>
-                              </div>
-                            ) : null}
-
-                            {canKickMember(member) ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void onKickMember(member.userId);
-                                }}
-                                disabled={kickPendingUserId === member.userId}
-                                className="mt-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                Kick
-                              </button>
-                            ) : null}
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {contextTab === 'roles' ? (
-                      <div className="space-y-2">
-                        {rolesLoading ? <p className="text-xs text-slate-500">Loading roles...</p> : null}
-                        {rolesError ? (
-                          <p className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-200">
-                            {rolesError}
-                          </p>
-                        ) : null}
-                        {!canManageMembers ? (
-                          <p className="text-xs text-slate-500">ManageMembers permission required.</p>
-                        ) : (
-                          <>
-                            <form onSubmit={onCreateRole} className="space-y-2 rounded-lg border border-ink-700 bg-ink-900/75 p-2">
-                              <input
-                                className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-                                value={createRoleName}
-                                onChange={(event) => setCreateRoleName(event.target.value)}
-                                placeholder="Role name"
-                                maxLength={40}
-                                required
-                              />
-                              <div className="grid grid-cols-2 gap-1">
-                                {ALL_SERVER_PERMISSIONS.map((permission) => (
-                                  <label key={permission} className="flex items-center gap-1 text-[11px] text-slate-300">
-                                    <input
-                                      type="checkbox"
-                                      checked={createRolePermissions.includes(permission)}
-                                      onChange={() =>
-                                        setCreateRolePermissions((current) => togglePermission(current, permission))
-                                      }
-                                    />
-                                    <span>{permission}</span>
-                                  </label>
-                                ))}
-                              </div>
-                              <button
-                                type="submit"
-                                disabled={createRolePending}
-                                className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {createRolePending ? 'Creating...' : 'Create Role'}
-                              </button>
-                            </form>
-
-                            {serverRoles.map((role) => {
-                              const draft = roleDrafts[role.id] ?? {
-                                name: role.name,
-                                permissions: [...role.permissions],
-                              };
-
-                              return (
-                                <article key={role.id} className="rounded-lg border border-ink-700 bg-ink-900/75 p-2">
-                                  <input
-                                    className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-                                    value={draft.name}
-                                    onChange={(event) => {
-                                      const value = event.target.value;
-                                      setRoleDrafts((current) => ({
-                                        ...current,
-                                        [role.id]: {
-                                          name: value,
-                                          permissions: current[role.id]?.permissions ?? [...role.permissions],
-                                        },
-                                      }));
-                                    }}
-                                    maxLength={40}
-                                  />
-                                  <div className="mt-2 grid grid-cols-2 gap-1">
-                                    {ALL_SERVER_PERMISSIONS.map((permission) => (
-                                      <label key={permission} className="flex items-center gap-1 text-[11px] text-slate-300">
-                                        <input
-                                          type="checkbox"
-                                          checked={draft.permissions.includes(permission)}
-                                          onChange={() => {
-                                            setRoleDrafts((current) => ({
-                                              ...current,
-                                              [role.id]: {
-                                                name: current[role.id]?.name ?? role.name,
-                                                permissions: togglePermission(
-                                                  current[role.id]?.permissions ?? role.permissions,
-                                                  permission,
-                                                ),
-                                              },
-                                            }));
-                                          }}
-                                        />
-                                        <span>{permission}</span>
-                                      </label>
-                                    ))}
-                                  </div>
+                            {isMenuOpen ? (
+                              <div className="mt-2 space-y-2 rounded-md border border-ink-700 bg-ink-800/80 p-2">
+                                {member.userId !== me.user.id ? (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      void onSaveRole(role.id);
+                                      void onSendFriendRequestByUserId(member.userId);
                                     }}
-                                    disabled={savingRoleId === role.id}
-                                    className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                    disabled={friendRequestPendingUserId === member.userId}
+                                    className="w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
-                                    {savingRoleId === role.id ? 'Saving...' : 'Save'}
+                                    {friendRequestPendingUserId === member.userId ? 'Sending...' : 'Add Friend'}
                                   </button>
-                                </article>
-                              );
-                            })}
-                          </>
-                        )}
-                      </div>
-                    ) : null}
+                                ) : null}
 
-                    {contextTab === 'call' ? (
-                      selectedChannel ? (
-                        <CallPanel
-                          connectionState={rtc.connectionState}
-                          sessionId={rtc.sessionId}
-                          roomName={rtc.livekitRoomName}
-                          participants={rtc.participants}
-                          canJoin={rtc.canJoin}
-                          canModerate={rtc.canModerate}
-                          onJoin={() => {
-                            void rtc.joinCall();
-                          }}
-                          onLeave={() => {
-                            void rtc.leaveCall();
-                          }}
-                          onMuteParticipant={(targetMaskId) => {
-                            void rtc.muteParticipant(targetMaskId);
-                          }}
-                        />
-                      ) : (
-                        <div className="rounded-xl border border-ink-700 bg-ink-900/70 p-3 text-xs text-slate-500">
-                          Select a channel to open call controls.
-                        </div>
-                      )
-                    ) : null}
+                                {canAssignRoles ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onToggleMemberRoleEditor(member.userId)}
+                                    className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400"
+                                  >
+                                    {isRoleEditorOpen ? 'Hide Role Editor' : 'Assign Roles'}
+                                  </button>
+                                ) : null}
+
+                                {canKickMember(member) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void onKickMember(member.userId);
+                                    }}
+                                    disabled={kickPendingUserId === member.userId}
+                                    className="w-full rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {kickPendingUserId === member.userId ? 'Kicking...' : 'Kick'}
+                                  </button>
+                                ) : null}
+
+                                {isRoleEditorOpen ? (
+                                  <div className="rounded-md border border-ink-700 bg-ink-900/80 p-2">
+                                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Assign Roles</p>
+                                    <label className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                                      Membership Role
+                                    </label>
+                                    <select
+                                      className="mt-1 w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
+                                      value={memberBaseRoles[member.userId] ?? member.role}
+                                      onChange={(event) => {
+                                        const nextRole = event.target.value as ServerMemberRole;
+                                        if (nextRole === 'OWNER') {
+                                          return;
+                                        }
+                                        setMemberBaseRoles((current) => ({
+                                          ...current,
+                                          [member.userId]: nextRole,
+                                        }));
+                                      }}
+                                    >
+                                      <option value="MEMBER">MEMBER</option>
+                                      <option value="ADMIN">ADMIN</option>
+                                    </select>
+
+                                    <div className="mt-1 space-y-1">
+                                      {serverRoles.map((role) => {
+                                        const selected = memberRoleSelections[member.userId] ?? member.roleIds;
+                                        const checked = selected.includes(role.id);
+                                        return (
+                                          <label key={role.id} className="flex items-center gap-2 text-[11px] text-slate-300">
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={() => {
+                                                setMemberRoleSelections((current) => {
+                                                  const currentRoleIds = current[member.userId] ?? member.roleIds;
+                                                  const nextRoleIds = currentRoleIds.includes(role.id)
+                                                    ? currentRoleIds.filter((value) => value !== role.id)
+                                                    : [...currentRoleIds, role.id];
+                                                  return {
+                                                    ...current,
+                                                    [member.userId]: nextRoleIds,
+                                                  };
+                                                });
+                                              }}
+                                            />
+                                            <span>{role.name}</span>
+                                          </label>
+                                        );
+                                      })}
+                                      {serverRoles.length === 0 ? (
+                                        <p className="text-[11px] text-slate-500">No custom roles yet.</p>
+                                      ) : null}
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        void onSaveMemberRoles(member.userId);
+                                      }}
+                                      disabled={saveMemberRolesPendingUserId === member.userId}
+                                      className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {saveMemberRolesPendingUserId === member.userId ? 'Saving...' : 'Save Roles'}
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })}
+                    </div>
                   </div>
                 </>
               )}

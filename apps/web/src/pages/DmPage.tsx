@@ -320,7 +320,7 @@ export function DmPage({ me }: DmPageProps) {
   const fallbackMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY) ?? me.masks[0]?.id ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-[1520px]">
+    <div className="w-full">
       <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
         <button
           type="button"

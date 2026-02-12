@@ -534,7 +534,7 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1520px]">
+    <div className="w-full">
       <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
         <button
           type="button"

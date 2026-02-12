@@ -13,7 +13,7 @@ export function HomePage({ me }: HomePageProps) {
   const activeMask = me.masks.find((mask) => mask.id === activeMaskId) ?? me.masks[0] ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4">
+    <div className="w-full space-y-4">
       <header className="masq-panel rounded-2xl p-5">
         <BrandLogo />
         <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Masq Home</p>
