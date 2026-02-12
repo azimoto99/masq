@@ -141,91 +141,93 @@ export default function App() {
       <Router>
         <RuntimeErrorBoundary>
           <RtcAuthGuard sessionStatus={session.status} />
-          <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(29,44,64,0.88),_rgba(8,10,14,1)_66%)] px-3 py-4 sm:px-4 sm:py-6 md:px-8 md:py-10">
+          <div className="h-dvh overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(29,44,64,0.88),_rgba(8,10,14,1)_66%)] p-3 sm:p-4 md:p-5">
             {session.status === 'loading' ? (
-              <div className="mx-auto mt-20 max-w-5xl">
+              <div className="flex h-full items-center justify-center">
                 <FullScreenLoading />
               </div>
             ) : (
-              <Routes>
-                <Route
-                  path="/"
-                  element={
-                    session.status === 'authenticated' ? (
-                      <Navigate to="/home" replace />
-                    ) : (
-                      <Navigate to="/login" replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/login"
-                  element={
-                    session.status === 'authenticated' ? (
-                      <Navigate to="/home" replace />
-                    ) : (
-                      <div className="mx-auto mt-12 max-w-5xl">
-                        <LoginPage onAuthenticated={refreshSession} />
-                      </div>
-                    )
-                  }
-                />
-                <Route
-                  path="/register"
-                  element={
-                    session.status === 'authenticated' ? (
-                      <Navigate to="/home" replace />
-                    ) : (
-                      <div className="mx-auto mt-12 max-w-5xl">
-                        <RegisterPage onAuthenticated={refreshSession} />
-                      </div>
-                    )
-                  }
-                />
-                <Route
-                  path="/home"
-                  element={renderAuthenticated((me) => <HomePage me={me} />)}
-                />
-                <Route
-                  path="/masks"
-                  element={renderAuthenticated((me) => (
-                    <MasksPage me={me} onRefresh={refreshSession} />
-                  ))}
-                />
-                <Route
-                  path="/rooms"
-                  element={renderAuthenticated((me) => <RoomChatPage me={me} />)}
-                />
-                <Route
-                  path="/rooms/:roomId"
-                  element={renderAuthenticated((me) => <RoomChatPage me={me} />)}
-                />
-                <Route
-                  path="/friends"
-                  element={renderAuthenticated((me) => <FriendsPage me={me} />)}
-                />
-                <Route
-                  path="/dm"
-                  element={renderAuthenticated((me) => <DmPage me={me} />)}
-                />
-                <Route
-                  path="/dm/:threadId"
-                  element={renderAuthenticated((me) => <DmPage me={me} />)}
-                />
-                <Route
-                  path="/servers"
-                  element={renderAuthenticated((me) => <ServersPage me={me} />)}
-                />
-                <Route
-                  path="/servers/:serverId"
-                  element={renderAuthenticated((me) => <ServersPage me={me} />)}
-                />
-                <Route
-                  path="/servers/:serverId/:channelId"
-                  element={renderAuthenticated((me) => <ServersPage me={me} />)}
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              <div className="h-full min-h-0">
+                <Routes>
+                  <Route
+                    path="/"
+                    element={
+                      session.status === 'authenticated' ? (
+                        <Navigate to="/home" replace />
+                      ) : (
+                        <Navigate to="/login" replace />
+                      )
+                    }
+                  />
+                  <Route
+                    path="/login"
+                    element={
+                      session.status === 'authenticated' ? (
+                        <Navigate to="/home" replace />
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <LoginPage onAuthenticated={refreshSession} />
+                        </div>
+                      )
+                    }
+                  />
+                  <Route
+                    path="/register"
+                    element={
+                      session.status === 'authenticated' ? (
+                        <Navigate to="/home" replace />
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <RegisterPage onAuthenticated={refreshSession} />
+                        </div>
+                      )
+                    }
+                  />
+                  <Route
+                    path="/home"
+                    element={renderAuthenticated((me) => <HomePage me={me} />)}
+                  />
+                  <Route
+                    path="/masks"
+                    element={renderAuthenticated((me) => (
+                      <MasksPage me={me} onRefresh={refreshSession} />
+                    ))}
+                  />
+                  <Route
+                    path="/rooms"
+                    element={renderAuthenticated((me) => <RoomChatPage me={me} />)}
+                  />
+                  <Route
+                    path="/rooms/:roomId"
+                    element={renderAuthenticated((me) => <RoomChatPage me={me} />)}
+                  />
+                  <Route
+                    path="/friends"
+                    element={renderAuthenticated((me) => <FriendsPage me={me} />)}
+                  />
+                  <Route
+                    path="/dm"
+                    element={renderAuthenticated((me) => <DmPage me={me} />)}
+                  />
+                  <Route
+                    path="/dm/:threadId"
+                    element={renderAuthenticated((me) => <DmPage me={me} />)}
+                  />
+                  <Route
+                    path="/servers"
+                    element={renderAuthenticated((me) => <ServersPage me={me} />)}
+                  />
+                  <Route
+                    path="/servers/:serverId"
+                    element={renderAuthenticated((me) => <ServersPage me={me} />)}
+                  />
+                  <Route
+                    path="/servers/:serverId/:channelId"
+                    element={renderAuthenticated((me) => <ServersPage me={me} />)}
+                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </div>
             )}
           </div>
         </RuntimeErrorBoundary>
