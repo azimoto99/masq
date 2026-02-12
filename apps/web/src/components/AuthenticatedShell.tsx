@@ -22,6 +22,13 @@ const MOBILE_NAV_ITEMS: Array<{ label: string; to: string }> = [
   { label: 'Rooms', to: '/rooms' },
   { label: 'Masks', to: '/masks' },
 ];
+const DESKTOP_NAV_ITEMS: Array<{ label: string; to: string }> = [
+  { label: 'Home', to: '/home' },
+  { label: 'Friends', to: '/friends' },
+  { label: 'DMs', to: '/dm' },
+  { label: 'Servers', to: '/servers' },
+  { label: 'Rooms', to: '/rooms' },
+];
 
 export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShellProps) {
   const location = useLocation();
@@ -47,7 +54,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
       location.pathname.startsWith('/masks') ||
       location.pathname.startsWith('/home'));
 
-  const isMobileNavActive = (path: string) =>
+  const isNavPathActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
@@ -101,6 +108,24 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
             </button>
           </div>
         </div>
+
+        <nav className="mt-3 hidden lg:block">
+          <div className="flex flex-wrap gap-1.5 rounded-xl border border-ink-700 bg-ink-900/75 p-1.5">
+            {DESKTOP_NAV_ITEMS.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`rounded-md border px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition ${
+                  isNavPathActive(item.to)
+                    ? 'border-neon-400/50 bg-neon-400/10 text-neon-100'
+                    : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600 hover:text-white'
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </nav>
       </header>
       <nav className="masq-panel-muted lg:hidden rounded-2xl p-2">
         <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -109,7 +134,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
               key={item.to}
               to={item.to}
               className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] transition ${
-                isMobileNavActive(item.to)
+                isNavPathActive(item.to)
                   ? 'border-neon-400/50 bg-neon-400/10 text-neon-100'
                   : 'border-ink-700 bg-ink-900 text-slate-300 hover:border-slate-600 hover:text-white'
               }`}

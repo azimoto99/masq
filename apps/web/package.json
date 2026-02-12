@@ -9,7 +9,8 @@
     "typecheck": "tsc -b tsconfig.json tsconfig.node.json --pretty false",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "test": "node -e \"console.log('web ok')\""
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@masq/shared": "workspace:*",
@@ -20,14 +21,19 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20.19.33",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
+    "jsdom": "^26.1.0",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.7",
     "typescript": "^5.6.3",
+    "vitest": "^2.1.9",
     "vite": "^5.4.8",
     "vite-tsconfig-paths": "^4.3.2"
   }

@@ -486,6 +486,12 @@ export function DmPage({ me }: DmPageProps) {
                     className="h-24 w-full resize-none rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-white focus:border-neon-400"
                     value={composerBody}
                     onChange={(event) => setComposerBody(event.target.value)}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }}
                     placeholder="Speak through your mask"
                     maxLength={MAX_ROOM_MESSAGE_LENGTH}
                     disabled={socketStatus !== 'connected' || sendingMessage}
@@ -519,9 +525,14 @@ export function DmPage({ me }: DmPageProps) {
                     <p className="mt-1 text-xs text-slate-400">Attachment: {composerImageFile.name}</p>
                   ) : null}
                   <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-slate-500">
-                      {composerBody.length}/{MAX_ROOM_MESSAGE_LENGTH}
-                    </p>
+                    <div>
+                      <p className="text-xs text-slate-500">
+                        {composerBody.length}/{MAX_ROOM_MESSAGE_LENGTH}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-[0.1em] text-slate-600">
+                        Ctrl+Enter to send
+                      </p>
+                    </div>
                     <button
                       type="submit"
                       className="rounded-lg border border-neon-400/40 bg-neon-400/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-neon-200 transition hover:border-neon-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"

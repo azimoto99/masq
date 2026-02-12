@@ -37,7 +37,8 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `pnpm typecheck`: runs TypeScript project checks across workspaces
 - `pnpm lint`: lints all packages
 - `pnpm test`: runs workspace tests
-- `pnpm test:e2e`: runs Playwright smoke tests
+- `pnpm test:e2e`: runs Playwright smoke tests (includes local preflight checks)
+- `pnpm test:e2e:install`: installs Chromium + system deps for Playwright
 - `pnpm format`: formats the repo with Prettier
 - `pnpm prisma:migrate`: applies Prisma migrations
 - `pnpm prisma:generate`: generates Prisma client
@@ -230,9 +231,9 @@ Masq includes a desktop packaging workspace at `apps/desktop`.
 - Covers single-user room chat and two-user realtime room exchange
 - Install browser binaries once:
   ```bash
-  pnpm exec playwright install --with-deps
+  pnpm test:e2e:install
   ```
-- Default `pnpm test:e2e` behavior starts docker + migrations + API + web using `playwright.config.ts`.
+- Default `pnpm test:e2e` behavior runs local preflight checks, then starts docker + migrations + API + web using `playwright.config.ts`.
 - To run against an already-running environment:
   ```bash
   E2E_BASE_URL=http://localhost:5173 pnpm test:e2e

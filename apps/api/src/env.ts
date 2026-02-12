@@ -23,6 +23,7 @@ const parseBooleanValue = (value: unknown): unknown => {
 const BooleanFromEnvSchema = z.preprocess(parseBooleanValue, z.boolean());
 const DEFAULT_UPLOADS_DIRECTORY = './uploads';
 const DEFAULT_RENDER_UPLOADS_DIRECTORY = '/var/data/masq-uploads';
+const DEFAULT_JWT_SECRET = 'masq-dev-secret-change-me-change-me!';
 
 const resolveUploadsDir = (rawUploadsDir: string | undefined): string => {
   const trimmed = rawUploadsDir?.trim();
@@ -48,7 +49,7 @@ const RawEnvSchema = z.object({
   WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
   CORS_ORIGINS: z.string().optional(),
   CORS_ALLOW_NO_ORIGIN: BooleanFromEnvSchema.optional(),
-  JWT_SECRET: z.string().min(32).default('masq-dev-secret-change-me-change-me!'),
+  JWT_SECRET: z.string().min(32).default(DEFAULT_JWT_SECRET),
   AUTH_COOKIE_NAME: z.string().default('masq_token'),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
   COOKIE_SECURE: BooleanFromEnvSchema.optional(),
@@ -84,6 +85,10 @@ const uploadsDir = resolveUploadsDir(parsed.data.UPLOADS_DIR);
 
 if (parsed.data.COOKIE_SAME_SITE === 'none' && !cookieSecure) {
   throw new Error('COOKIE_SAME_SITE=none requires COOKIE_SECURE=true');
+}
+
+if (parsed.data.NODE_ENV === 'production' && parsed.data.JWT_SECRET === DEFAULT_JWT_SECRET) {
+  throw new Error('JWT_SECRET must be changed from the default value in production');
 }
 
 const livekitConfigCount = [

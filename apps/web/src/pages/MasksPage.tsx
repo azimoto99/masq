@@ -11,6 +11,9 @@ interface MasksPageProps {
 
 const ACTIVE_MASK_STORAGE_KEY = 'masq.activeMaskId';
 
+const randomHexColor = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`;
+const randomSeedSuffix = () => Math.random().toString(36).slice(2, 7);
+
 export function MasksPage({ me, onRefresh }: MasksPageProps) {
   const [activeMaskId, setActiveMaskId] = useState<string | null>(
     window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY),
@@ -73,7 +76,12 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
     }
   };
 
-  const handleDeleteMask = async (maskId: string) => {
+  const handleDeleteMask = async (maskId: string, displayName: string) => {
+    const shouldDelete = window.confirm(`Delete mask "${displayName}"? This cannot be undone.`);
+    if (!shouldDelete) {
+      return;
+    }
+
     setError(null);
     try {
       await deleteMask(maskId);
@@ -101,6 +109,13 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
       setError(err instanceof ApiError ? err.message : 'Unable to upload avatar');
     } finally {
       setAvatarUploadingMaskId(null);
+    }
+  };
+
+  const randomizeDraftAppearance = () => {
+    setColor(randomHexColor());
+    if (!avatarSeed.trim()) {
+      setAvatarSeed(`mask-${randomSeedSuffix()}`);
     }
   };
 
@@ -184,7 +199,7 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
                       </label>
                       <button
                         type="button"
-                        onClick={() => void handleDeleteMask(mask.id)}
+                        onClick={() => void handleDeleteMask(mask.id, mask.displayName)}
                         className="rounded-lg border border-rose-500/40 px-3 py-1 text-xs uppercase tracking-[0.18em] text-rose-300 transition hover:border-rose-400 hover:text-rose-200"
                       >
                         Delete
@@ -218,7 +233,16 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs uppercase tracking-[0.2em] text-slate-500">Color</label>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-xs uppercase tracking-[0.2em] text-slate-500">Color</label>
+                <button
+                  type="button"
+                  onClick={randomizeDraftAppearance}
+                  className="rounded-md border border-ink-700 bg-ink-900/75 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-500 hover:text-white"
+                >
+                  Randomize
+                </button>
+              </div>
               <input
                 className="h-10 w-full rounded-xl border border-ink-700 bg-ink-900 px-3 py-2"
                 type="color"

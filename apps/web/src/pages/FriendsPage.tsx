@@ -27,6 +27,7 @@ interface FriendsPageProps {
 export function FriendsPage({ me }: FriendsPageProps) {
   const navigate = useNavigate();
   const [friendCode, setFriendCode] = useState('');
+  const [friendSearch, setFriendSearch] = useState('');
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [incoming, setIncoming] = useState<IncomingFriendRequestItem[]>([]);
   const [outgoing, setOutgoing] = useState<OutgoingFriendRequestItem[]>([]);
@@ -37,6 +38,21 @@ export function FriendsPage({ me }: FriendsPageProps) {
   const [busyStartDmUserId, setBusyStartDmUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const normalizedFriendSearch = friendSearch.trim().toLowerCase();
+  const filteredFriends = friends.filter((friend) => {
+    if (!normalizedFriendSearch) {
+      return true;
+    }
+
+    const displayName = friend.defaultMask?.displayName.toLowerCase() ?? '';
+    const avatarSeed = friend.defaultMask?.avatarSeed.toLowerCase() ?? '';
+    const friendCodeValue = friend.friendCode.toLowerCase();
+    return (
+      displayName.includes(normalizedFriendSearch) ||
+      avatarSeed.includes(normalizedFriendSearch) ||
+      friendCodeValue.includes(normalizedFriendSearch)
+    );
+  });
 
   const resolveInitialMaskId = () => {
     if (me.masks.length === 0) {
@@ -201,6 +217,20 @@ export function FriendsPage({ me }: FriendsPageProps) {
           <h1 className="mt-3 text-3xl font-semibold text-white">Friends</h1>
           <p className="mt-2 text-sm text-slate-400">Account-level relationships, mask-level presence stays contextual.</p>
         </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="masq-panel-muted rounded-lg px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Friends</p>
+            <p className="mt-1 text-sm font-semibold text-white">{friends.length}</p>
+          </div>
+          <div className="masq-panel-muted rounded-lg px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Incoming</p>
+            <p className="mt-1 text-sm font-semibold text-white">{incoming.length}</p>
+          </div>
+          <div className="masq-panel-muted rounded-lg px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Outgoing</p>
+            <p className="mt-1 text-sm font-semibold text-white">{outgoing.length}</p>
+          </div>
+        </div>
       </header>
 
       <section className="grid gap-4 lg:grid-cols-[1.1fr,1fr]">
@@ -230,6 +260,7 @@ export function FriendsPage({ me }: FriendsPageProps) {
                 value={friendCode}
                 onChange={(event) => setFriendCode(event.target.value.toUpperCase())}
                 type="text"
+                maxLength={12}
                 data-testid="friends-add-code-input"
                 required
               />
@@ -326,11 +357,27 @@ export function FriendsPage({ me }: FriendsPageProps) {
         </div>
 
         <aside className="masq-panel rounded-xl p-5">
-          <h2 className="text-sm uppercase tracking-[0.28em] text-slate-500">Friends</h2>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <h2 className="text-sm uppercase tracking-[0.28em] text-slate-500">Friends</h2>
+            <label className="w-full sm:w-auto sm:min-w-[220px]">
+              <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Search</span>
+              <input
+                className="w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:border-neon-400"
+                type="search"
+                value={friendSearch}
+                onChange={(event) => setFriendSearch(event.target.value)}
+                placeholder="Mask, seed, or code"
+              />
+            </label>
+          </div>
           <div className="mt-4 space-y-3">
             {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
-            {!loading && friends.length === 0 ? <p className="text-sm text-slate-500">No friends yet.</p> : null}
-            {friends.map((friend) => (
+            {!loading && filteredFriends.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                {friends.length === 0 ? 'No friends yet.' : 'No friends match your search.'}
+              </p>
+            ) : null}
+            {filteredFriends.map((friend) => (
               <article key={friend.id} className="masq-panel-muted rounded-lg p-3.5">
                 <p className="text-sm text-white">
                   {friend.defaultMask?.displayName ?? 'Masked Contact'}

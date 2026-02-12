@@ -44,6 +44,8 @@ export function SpacesSidebar({
 }: SpacesSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [internalServers, setInternalServers] = useState<ServerListItem[]>([]);
   const [internalLoading, setInternalLoading] = useState(false);
   const [internalError, setInternalError] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export function SpacesSidebar({
   const [dmError, setDmError] = useState<string | null>(null);
   const persistedMaskId = window.localStorage.getItem('masq.activeMaskId');
   const effectiveMaskId = activeMaskId ?? persistedMaskId;
+  const normalizedSearch = searchQuery.trim().toLowerCase();
 
   useEffect(() => {
     if (servers !== undefined) {
@@ -86,7 +89,7 @@ export function SpacesSidebar({
     return () => {
       cancelled = true;
     };
-  }, [servers]);
+  }, [reloadNonce, servers]);
 
   useEffect(() => {
     if (!effectiveMaskId) {
@@ -121,7 +124,7 @@ export function SpacesSidebar({
     return () => {
       cancelled = true;
     };
-  }, [effectiveMaskId, location.pathname]);
+  }, [effectiveMaskId, location.pathname, reloadNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,11 +153,46 @@ export function SpacesSidebar({
     return () => {
       cancelled = true;
     };
-  }, [location.pathname]);
+  }, [location.pathname, reloadNonce]);
 
   const effectiveServers = servers ?? internalServers;
   const effectiveLoading = serversLoading ?? internalLoading;
   const effectiveError = serversError ?? internalError;
+  const filteredServers = useMemo(() => {
+    if (!normalizedSearch) {
+      return effectiveServers;
+    }
+
+    return effectiveServers.filter((item) => {
+      const name = item.server.name.toLowerCase();
+      const mask = item.serverMask.displayName.toLowerCase();
+      const role = item.role.toLowerCase();
+      return name.includes(normalizedSearch) || mask.includes(normalizedSearch) || role.includes(normalizedSearch);
+    });
+  }, [effectiveServers, normalizedSearch]);
+  const filteredRooms = useMemo(() => {
+    if (!normalizedSearch) {
+      return roomItems;
+    }
+
+    return roomItems.filter((room) => {
+      const title = room.title.toLowerCase();
+      const kind = room.kind.toLowerCase();
+      const role = room.role.toLowerCase();
+      return title.includes(normalizedSearch) || kind.includes(normalizedSearch) || role.includes(normalizedSearch);
+    });
+  }, [normalizedSearch, roomItems]);
+  const filteredDmItems = useMemo(() => {
+    if (!normalizedSearch) {
+      return dmItems;
+    }
+
+    return dmItems.filter((item) => {
+      const displayName = item.peer.defaultMask?.displayName.toLowerCase() ?? '';
+      const preview = item.lastMessage?.body.toLowerCase() ?? '';
+      return displayName.includes(normalizedSearch) || preview.includes(normalizedSearch);
+    });
+  }, [dmItems, normalizedSearch]);
 
   const activeServerId = useMemo(() => {
     if (selectedServerId) {
@@ -196,6 +234,9 @@ export function SpacesSidebar({
 
     navigate('/servers?serverDialog=create');
   };
+  const onRefreshLists = () => {
+    setReloadNonce((current) => current + 1);
+  };
 
   return (
     <div
@@ -207,14 +248,34 @@ export function SpacesSidebar({
             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">HUD</p>
             <h1 className="text-sm font-semibold text-white">Spaces</h1>
           </div>
-          <button
-            type="button"
-            onClick={onOpenServerAccess}
-            className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300"
-          >
-            Create / Join
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onRefreshLists}
+              className="rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-300 hover:border-slate-600 hover:text-white"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onOpenServerAccess}
+              className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100 hover:border-cyan-300"
+            >
+              Create / Join
+            </button>
+          </div>
         </div>
+
+        <label className="block">
+          <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">Search Spaces</span>
+          <input
+            className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white placeholder:text-slate-600 focus:border-neon-400"
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Server, room, DM..."
+          />
+        </label>
 
         <div className="space-y-1">
           {STATIC_SPACES.map((item) => (
@@ -235,15 +296,19 @@ export function SpacesSidebar({
         </div>
 
         <div className="rounded-lg border border-ink-700 bg-ink-900/70 p-2">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Servers</p>
+          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+            Servers ({filteredServers.length}/{effectiveServers.length})
+          </p>
 
           {effectiveLoading ? <p className="mt-2 text-xs text-slate-500">Loading servers...</p> : null}
-          {!effectiveLoading && effectiveServers.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500">No servers yet.</p>
+          {!effectiveLoading && filteredServers.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">
+              {effectiveServers.length === 0 ? 'No servers yet.' : 'No servers match the current filter.'}
+            </p>
           ) : null}
 
           <div className="mt-2 space-y-1">
-            {effectiveServers.map((item) => (
+            {filteredServers.map((item) => (
               <button
                 key={item.server.id}
                 type="button"
@@ -277,18 +342,22 @@ export function SpacesSidebar({
         </div>
 
         <div className="rounded-lg border border-ink-700 bg-ink-900/70 p-2">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Rooms</p>
+          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+            Rooms ({filteredRooms.length}/{roomItems.length})
+          </p>
 
           {!effectiveMaskId ? (
             <p className="mt-2 text-xs text-slate-500">Select an active mask to load rooms.</p>
           ) : null}
           {effectiveMaskId && roomsLoading ? <p className="mt-2 text-xs text-slate-500">Loading rooms...</p> : null}
-          {effectiveMaskId && !roomsLoading && roomItems.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500">No active rooms.</p>
+          {effectiveMaskId && !roomsLoading && filteredRooms.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">
+              {roomItems.length === 0 ? 'No active rooms.' : 'No rooms match the current filter.'}
+            </p>
           ) : null}
 
           <div className="mt-2 space-y-1">
-            {roomItems.map((room) => (
+            {filteredRooms.map((room) => (
               <button
                 key={room.id}
                 type="button"
@@ -315,15 +384,19 @@ export function SpacesSidebar({
         </div>
 
         <div className="rounded-lg border border-ink-700 bg-ink-900/70 p-2">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">DM Threads</p>
+          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+            DM Threads ({filteredDmItems.length}/{dmItems.length})
+          </p>
 
           {dmLoading ? <p className="mt-2 text-xs text-slate-500">Loading DMs...</p> : null}
-          {!dmLoading && dmItems.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500">No DM threads yet.</p>
+          {!dmLoading && filteredDmItems.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">
+              {dmItems.length === 0 ? 'No DM threads yet.' : 'No DM threads match the current filter.'}
+            </p>
           ) : null}
 
           <div className="mt-2 space-y-1">
-            {dmItems.map((item) => (
+            {filteredDmItems.map((item) => (
               <button
                 key={item.thread.id}
                 type="button"
