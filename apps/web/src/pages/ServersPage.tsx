@@ -791,136 +791,6 @@ export function ServersPage({ me }: ServersPageProps) {
                   setServerDialogOpen(true);
                 }}
               />
-
-              {selectedServerId && serverDetails ? (
-                <div className="masq-panel-muted mt-auto space-y-2 rounded-xl p-2.5">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Active Server</p>
-                    <p className="truncate text-sm font-medium text-white">{serverDetails.server.name}</p>
-                    <p className="truncate text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                      {myServerMember
-                        ? `${myServerMember.role} - ${myServerMember.serverMask.displayName}`
-                        : 'No membership'}
-                    </p>
-                  </div>
-
-                  {myServerMember ? (
-                    <>
-                      <label className="block">
-                        <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                          Server Mask
-                        </span>
-                        <select
-                          className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
-                          value={myServerMember.serverMask.id}
-                          onChange={(event) => {
-                            void onChangeServerMask(event.target.value);
-                          }}
-                          disabled={maskChangePending}
-                        >
-                          {me.masks.map((mask) => (
-                            <option key={mask.id} value={mask.id}>
-                              {mask.displayName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="block">
-                        <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                          Identity Mode
-                        </span>
-                        <select
-                          className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
-                          value={channelIdentityMode}
-                          onChange={(event) => {
-                            void onUpdateChannelIdentityMode(event.target.value as 'SERVER_MASK' | 'CHANNEL_MASK');
-                          }}
-                          disabled={!canManageMembers || settingsPending}
-                        >
-                          <option value="SERVER_MASK">SERVER_MASK</option>
-                          <option value="CHANNEL_MASK">CHANNEL_MASK</option>
-                        </select>
-                      </label>
-                    </>
-                  ) : null}
-
-                  <div>
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Channels</p>
-                    </div>
-                    <div className="space-y-1.5">
-                      {serverDetails.channels.map((channel) => (
-                        <div key={channel.id} className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/servers/${serverDetails.server.id}/${channel.id}`)}
-                            className={`flex-1 rounded-md border px-2 py-1 text-left text-xs ${
-                              selectedChannel?.id === channel.id
-                                ? 'border-neon-400/45 bg-neon-400/10 text-white'
-                                : 'border-ink-700 bg-ink-900/80 text-slate-300 hover:border-slate-600'
-                            }`}
-                          >
-                            # {channel.name}
-                          </button>
-                          {canManageChannels ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void onDeleteChannel(channel.id);
-                              }}
-                              disabled={deleteChannelPendingId === channel.id}
-                              className="rounded-md border border-rose-500/40 bg-rose-500/10 px-1.5 py-1 text-[10px] uppercase tracking-[0.11em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Del
-                            </button>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {canManageChannels ? (
-                    <form onSubmit={onCreateChannel} className="space-y-1.5">
-                      <input
-                        className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
-                        value={createChannelName}
-                        onChange={(event) => setCreateChannelName(event.target.value)}
-                        maxLength={60}
-                        required
-                      />
-                      <button
-                        type="submit"
-                        disabled={createChannelPending}
-                        className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {createChannelPending ? 'Creating...' : 'New Channel'}
-                      </button>
-                    </form>
-                  ) : null}
-
-                  {canManageInvites ? (
-                    <div className="space-y-1.5 rounded-md border border-ink-700 bg-ink-900/70 p-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void onCreateInvite();
-                        }}
-                        disabled={createInvitePending}
-                        className="w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {createInvitePending ? 'Creating Invite...' : 'Create Invite'}
-                      </button>
-                      {latestInviteCode ? (
-                        <p className="text-[11px] text-cyan-100">
-                          Invite: <span className="font-mono">{latestInviteCode}</span>
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
             </div>
           </div>
 
@@ -1174,6 +1044,133 @@ export function ServersPage({ me }: ServersPageProps) {
                 </div>
               ) : (
                 <>
+                  <div className="masq-panel-muted shrink-0 space-y-2 rounded-xl p-2.5">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Active Server</p>
+                      <p className="truncate text-sm font-medium text-white">{serverDetails.server.name}</p>
+                      <p className="truncate text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                        {myServerMember
+                          ? `${myServerMember.role} - ${myServerMember.serverMask.displayName}`
+                          : 'No membership'}
+                      </p>
+                    </div>
+
+                    {myServerMember ? (
+                      <>
+                        <label className="block">
+                          <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                            Server Mask
+                          </span>
+                          <select
+                            className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
+                            value={myServerMember.serverMask.id}
+                            onChange={(event) => {
+                              void onChangeServerMask(event.target.value);
+                            }}
+                            disabled={maskChangePending}
+                          >
+                            {me.masks.map((mask) => (
+                              <option key={mask.id} value={mask.id}>
+                                {mask.displayName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-1 block text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                            Identity Mode
+                          </span>
+                          <select
+                            className="w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-white focus:border-neon-400"
+                            value={channelIdentityMode}
+                            onChange={(event) => {
+                              void onUpdateChannelIdentityMode(event.target.value as 'SERVER_MASK' | 'CHANNEL_MASK');
+                            }}
+                            disabled={!canManageMembers || settingsPending}
+                          >
+                            <option value="SERVER_MASK">SERVER_MASK</option>
+                            <option value="CHANNEL_MASK">CHANNEL_MASK</option>
+                          </select>
+                        </label>
+                      </>
+                    ) : null}
+
+                    <div>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Channels</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        {serverDetails.channels.map((channel) => (
+                          <div key={channel.id} className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/servers/${serverDetails.server.id}/${channel.id}`)}
+                              className={`flex-1 rounded-md border px-2 py-1 text-left text-xs ${
+                                selectedChannel?.id === channel.id
+                                  ? 'border-neon-400/45 bg-neon-400/10 text-white'
+                                  : 'border-ink-700 bg-ink-900/80 text-slate-300 hover:border-slate-600'
+                              }`}
+                            >
+                              # {channel.name}
+                            </button>
+                            {canManageChannels ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void onDeleteChannel(channel.id);
+                                }}
+                                disabled={deleteChannelPendingId === channel.id}
+                                className="rounded-md border border-rose-500/40 bg-rose-500/10 px-1.5 py-1 text-[10px] uppercase tracking-[0.11em] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Del
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {canManageChannels ? (
+                      <form onSubmit={onCreateChannel} className="space-y-1.5">
+                        <input
+                          className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-white focus:border-neon-400"
+                          value={createChannelName}
+                          onChange={(event) => setCreateChannelName(event.target.value)}
+                          maxLength={60}
+                          required
+                        />
+                        <button
+                          type="submit"
+                          disabled={createChannelPending}
+                          className="w-full rounded-md border border-neon-400/40 bg-neon-400/10 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-neon-200 hover:border-neon-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {createChannelPending ? 'Creating...' : 'New Channel'}
+                        </button>
+                      </form>
+                    ) : null}
+
+                    {canManageInvites ? (
+                      <div className="space-y-1.5 rounded-md border border-ink-700 bg-ink-900/70 p-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void onCreateInvite();
+                          }}
+                          disabled={createInvitePending}
+                          className="w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {createInvitePending ? 'Creating Invite...' : 'Create Invite'}
+                        </button>
+                        {latestInviteCode ? (
+                          <p className="text-[11px] text-cyan-100">
+                            Invite: <span className="font-mono">{latestInviteCode}</span>
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+
                   <div className="flex items-center justify-between rounded-xl border border-ink-700 bg-ink-900/70 px-2.5 py-1.5">
                     <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Members</p>
                     <span className="rounded-full border border-ink-700 bg-ink-800 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-slate-400">

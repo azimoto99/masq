@@ -79,23 +79,6 @@ export function HomePage({ me }: HomePageProps) {
           <p className="mt-1 text-sm text-slate-400">Create short-lived rooms with realtime chat.</p>
         </Link>
 
-        <Link
-          to="/narrative"
-          className="masq-panel rounded-xl p-4 text-left transition hover:border-slate-500"
-        >
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Story</p>
-          <p className="mt-2 text-lg font-medium text-white">Narrative Rooms</p>
-          <p className="mt-1 text-sm text-slate-400">Phase-based sessions with private role assignment.</p>
-        </Link>
-
-        <Link
-          to="/perks"
-          className="masq-panel rounded-xl p-4 text-left transition hover:border-slate-500"
-        >
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Account</p>
-          <p className="mt-2 text-lg font-medium text-white">Perks</p>
-          <p className="mt-1 text-sm text-slate-400">View aura styles, unlocks, and entitlement status.</p>
-        </Link>
       </section>
     </div>
   );
