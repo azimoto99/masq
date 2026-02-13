@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { type MouseEvent, useCallback, useEffect } from 'react';
 import { CTAButton } from '../components/landing/CTAButton';
 import { FeatureCard } from '../components/landing/FeatureCard';
 import { MockPanel } from '../components/landing/MockPanel';
@@ -26,6 +26,11 @@ const SEO_TAGS = [
     attr: 'property' as const,
     key: 'og:type',
     content: 'website',
+  },
+  {
+    attr: 'property' as const,
+    key: 'og:image',
+    content: 'https://masq.chat/og-placeholder.png',
   },
   {
     attr: 'property' as const,
@@ -73,10 +78,29 @@ const IconAura = () => (
   </svg>
 );
 
-const IconPrivacy = () => (
+const IconAlwaysOn = () => (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7v5l3 2" strokeLinecap="round" />
+  </svg>
+);
+
+const IconLock = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+  </svg>
+);
+
+const IconBolt = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M13 2L5 13h6l-1 9 9-13h-6l0-7z" />
+  </svg>
+);
+
+const IconShield = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
     <path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3z" />
-    <path d="M9.5 12.5l1.5 1.5 3.5-3.5" />
   </svg>
 );
 
@@ -92,12 +116,32 @@ export function LandingPage() {
     };
   }, []);
 
+  const onScrollTo = useCallback((id: string, event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    const section = document.getElementById(id);
+    if (!section) {
+      return;
+    }
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    section.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+  }, []);
+
+  const handleFeaturesNav = (event: MouseEvent<HTMLElement>) => onScrollTo('features', event);
+  const handlePrivacyNav = (event: MouseEvent<HTMLElement>) => onScrollTo('privacy', event);
+  const handleProNav = (event: MouseEvent<HTMLElement>) => onScrollTo('pro', event);
+  const handleBuiltForNav = (event: MouseEvent<HTMLElement>) => onScrollTo('built-for', event);
+  const handleSnapshotNav = (event: MouseEvent<HTMLElement>) => onScrollTo('snapshot', event);
+
   return (
     <div className="relative -m-3 h-[calc(100%+1.5rem)] overflow-y-auto bg-[#050810] text-slate-100 sm:-m-4 sm:h-[calc(100%+2rem)] md:-m-5 md:h-[calc(100%+2.5rem)]">
       <div className="landing-noise pointer-events-none absolute inset-0" />
       <div className="landing-grid pointer-events-none absolute inset-0 opacity-55" />
       <div className="landing-orb landing-orb-a pointer-events-none absolute -left-20 top-24 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
-      <div className="landing-orb landing-orb-b pointer-events-none absolute right-0 top-[32rem] h-72 w-72 rounded-full bg-emerald-400/15 blur-3xl" />
+      <div className="landing-orb landing-orb-b pointer-events-none absolute right-0 top-[30rem] h-72 w-72 rounded-full bg-emerald-400/15 blur-3xl" />
 
       <div className="relative z-10 pb-16">
         <header className="sticky top-0 z-30 border-b border-slate-800/60 bg-[#050810]/85 backdrop-blur-md">
@@ -111,18 +155,41 @@ export function LandingPage() {
                 <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-200/90">Private Realtime Chat</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <CTAButton to="/login" variant="secondary" className="px-3 py-1.5 text-xs">
+            <nav className="hidden items-center gap-4 md:flex">
+              <a
+                href="#features"
+                onClick={handleFeaturesNav}
+                className="text-xs uppercase tracking-[0.12em] text-slate-300 hover:text-white"
+              >
+                Features
+              </a>
+              <a
+                href="#privacy"
+                onClick={handlePrivacyNav}
+                className="text-xs uppercase tracking-[0.12em] text-slate-300 hover:text-white"
+              >
+                Privacy
+              </a>
+              <a
+                href="#pro"
+                onClick={handleProNav}
+                className="text-xs uppercase tracking-[0.12em] text-slate-300 hover:text-white"
+              >
+                Pro
+              </a>
+            </nav>
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <CTAButton to="/login" variant="secondary" className="px-3 py-1.5 text-xs sm:text-sm">
                 Open App
               </CTAButton>
-              <CTAButton to="/register" className="px-3 py-1.5 text-xs">
+              <CTAButton to="/register" className="px-3 py-1.5 text-xs sm:text-sm">
                 Create Account
               </CTAButton>
             </div>
           </div>
         </header>
 
-        <Section className="pt-16 sm:pt-20">
+        <Section id="snapshot" className="scroll-mt-24 pt-16 sm:pt-20">
           <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_420px]">
             <div>
               <div className="mb-5 flex flex-wrap items-center gap-2">
@@ -138,45 +205,76 @@ export function LandingPage() {
                 <span className="block text-cyan-200">Own your identity.</span>
               </h1>
               <p className="mt-5 max-w-2xl text-base text-slate-300 sm:text-lg">
-                Masq is a privacy-forward gamer chat platform where you can switch mask personas by context, hop
-                between servers, DMs, and rooms instantly, and run LiveKit-powered voice/video without recording.
+                Switch personas by context, jump into low-latency voice/video/screen share, and keep recordings off by
+                default.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <CTAButton to="/register" className="min-w-[150px]">
                   Create Account
                 </CTAButton>
-                <CTAButton href="#features" variant="secondary" className="min-w-[150px]">
+                <CTAButton href="#features" variant="secondary" className="min-w-[150px]" onClick={handleFeaturesNav}>
                   See Features
                 </CTAButton>
-                <CTAButton href="#showcase" variant="live" className="min-w-[150px]">
+                <CTAButton href="#snapshot" variant="live" className="min-w-[150px]" onClick={handleSnapshotNav}>
                   Watch Demo
                 </CTAButton>
               </div>
-              <p className="mt-4 text-xs text-slate-400">
-                Built for teams, clans, and communities that want fast comms with stronger identity control.
-              </p>
+
+              <div className="mt-6 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">Why Masq</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 px-2.5 py-2 text-xs text-slate-200">
+                    Mask identity for every context
+                  </div>
+                  <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 px-2.5 py-2 text-xs text-slate-200">
+                    Fast RTC voice, video, screen share
+                  </div>
+                  <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 px-2.5 py-2 text-xs text-slate-200">
+                    No call recording by default
+                  </div>
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs text-slate-400">Built for teams, clans, and communities that move fast.</p>
             </div>
 
-            <MockPanel title="Live Session Snapshot" subtitle="Mask context active">
+            <MockPanel title="Live Session Snapshot" subtitle="Mask context active" badgeLabel="Live" badgeTone="live">
               <div className="space-y-3">
                 <div className="rounded-xl border border-cyan-300/25 bg-cyan-300/8 px-3 py-2">
-                  <p className="text-xs text-cyan-100">Server: Night Ops</p>
-                  <p className="text-[11px] text-cyan-200/80">Voice active - 8 participants</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-slate-700/80 bg-slate-900/80 p-2">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Mask</p>
-                    <p className="mt-1 text-sm text-white">Azi</p>
-                    <p className="text-[11px] text-slate-400">Aura: Resonant</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-cyan-100">Server: Night Ops</p>
+                    <p className="inline-flex items-center gap-1.5 text-[11px] text-emerald-100">
+                      <span className="landing-live-dot h-2.5 w-2.5 rounded-full bg-emerald-300" />
+                      Voice active
+                    </p>
                   </div>
-                  <div className="rounded-lg border border-slate-700/80 bg-slate-900/80 p-2">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Privacy</p>
-                    <p className="mt-1 text-sm text-white">Recording Off</p>
-                    <p className="text-[11px] text-slate-400">User-controlled</p>
+                  <p className="text-[11px] text-cyan-200/80">8 participants in-call</p>
+                </div>
+                <div className="rounded-lg border border-slate-700/80 bg-slate-900/80 p-2.5">
+                  <div className="flex items-center gap-3">
+                    <div className="landing-aura-avatar relative h-11 w-11 rounded-full border border-cyan-300/55 bg-gradient-to-br from-cyan-300/25 to-slate-800">
+                      <span className="landing-aura-halo absolute inset-0 rounded-full" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-white">Azi</p>
+                      <p className="text-[11px] text-slate-400">Aura: Resonant</p>
+                    </div>
+                  </div>
+                  <div className="landing-wave mt-3" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <span />
                   </div>
                 </div>
-                <div className="rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs text-emerald-100">
-                  LiveKit media active - minimal retention posture
+                <div className="flex items-center justify-between rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs text-emerald-100">
+                  <p className="inline-flex items-center gap-1.5">
+                    <IconLock />
+                    Recording Off
+                  </p>
+                  <p className="text-[11px] text-emerald-200/85">LiveKit media active</p>
                 </div>
               </div>
             </MockPanel>
@@ -186,115 +284,61 @@ export function LandingPage() {
         <Section
           id="features"
           eyebrow="Core Platform"
-          title="Built for high-tempo groups and privacy-first communities"
-          subtitle="Masq keeps your communication fast while giving identity and call-control choices usually missing from mainstream chat tools."
-          className="pt-16 sm:pt-20"
+          title="Move faster with identity control and realtime clarity"
+          subtitle="Everything stays readable mid-session: where you are, who you are, and what your call state is."
+          className="scroll-mt-24 pt-16 sm:pt-20"
         >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <FeatureCard
               icon={<IconMask />}
               title="Mask Identity"
-              description="Create multiple personas and choose who you are per context. Keep your identity flexible without account juggling."
+              description="Switch personas by context without account juggling."
+              href="#built-for"
+              onLearnMore={handleBuiltForNav}
             />
             <FeatureCard
               icon={<IconRtc />}
               title="Realtime Voice, Video, Screen Share"
-              description="Low-latency LiveKit sessions for voice/video/screen share. Designed for tactical comms and quick group coordination."
+              description="LiveKit-powered comms tuned for low-latency group play."
               badge="Live"
+              href="#privacy"
+              onLearnMore={handlePrivacyNav}
             />
             <FeatureCard
               icon={<IconStack />}
               title="Servers, DMs, and Rooms"
-              description="Move between persistent channels and short-lived rooms with fast navigation and clear context switching."
+              description="Jump between persistent channels and quick rooms instantly."
+              href="#built-for"
+              onLearnMore={handleBuiltForNav}
+            />
+            <FeatureCard
+              icon={<IconAlwaysOn />}
+              title="Always-on Calls"
+              description="Stay connected while moving through pages and workflows."
+              href="#pro"
+              onLearnMore={handleProNav}
             />
             <FeatureCard
               icon={<IconAura />}
-              title="Aura Progression"
-              description="Presence progression per mask with visual tiers. Aura is not karma: no punishment loops and no moderation coupling."
-            />
-            <FeatureCard
-              icon={<IconPrivacy />}
-              title="Privacy Posture"
-              description="No call recording by default, minimal retention direction, and user-facing control surfaces built in from the start."
+              title="Aura (Presence, not karma)"
+              description="Per-mask progression with tiers and color, never punishment."
+              href="#privacy"
+              onLearnMore={handlePrivacyNav}
             />
           </div>
         </Section>
 
         <Section
-          id="showcase"
-          eyebrow="Concept Panels"
-          title="Designed for fast reads in live sessions"
-          subtitle="These previews represent Masq's communication surfaces without exposing private data."
-          className="pt-16 sm:pt-20"
+          id="built-for"
+          eyebrow="Built For"
+          title="Teams and communities that need fast trust"
+          subtitle="Masq fits high-pressure sessions and private spaces where identity context matters."
+          className="scroll-mt-24 pt-16 sm:pt-20"
         >
-          <div className="grid gap-4 lg:grid-cols-3">
-            <MockPanel title="Channel Chat" subtitle="Room-scoped messaging">
-              <div className="space-y-2">
-                <div className="rounded-lg border border-slate-700/70 bg-slate-900/80 p-2">
-                  <p className="text-xs font-medium text-white">Azi</p>
-                  <p className="text-xs text-slate-300">Push left flank at 02:15.</p>
-                </div>
-                <div className="rounded-lg border border-slate-700/70 bg-slate-900/80 p-2">
-                  <p className="text-xs font-medium text-white">Nyx</p>
-                  <p className="text-xs text-slate-300">Copy. Masking to scout profile now.</p>
-                </div>
-                <div className="rounded-lg border border-cyan-300/30 bg-cyan-300/10 p-2">
-                  <p className="text-[11px] text-cyan-100">Typing as: Azi (Resonant Aura)</p>
-                </div>
-              </div>
-            </MockPanel>
-
-            <MockPanel title="Call Dock" subtitle="Live session controls">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between rounded-lg border border-slate-700/70 bg-slate-900/80 px-3 py-2">
-                  <p className="text-xs text-slate-200">Night Ops Voice</p>
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <button type="button" className="rounded-lg border border-slate-700/70 bg-slate-900/80 py-2 text-xs text-slate-200">
-                    Mic
-                  </button>
-                  <button type="button" className="rounded-lg border border-slate-700/70 bg-slate-900/80 py-2 text-xs text-slate-200">
-                    Cam
-                  </button>
-                  <button type="button" className="rounded-lg border border-emerald-300/35 bg-emerald-300/10 py-2 text-xs text-emerald-100">
-                    Share
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-400">Recording remains disabled by policy.</p>
-              </div>
-            </MockPanel>
-
-            <MockPanel title="Mask + Aura Card" subtitle="Per-mask progression">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 rounded-lg border border-slate-700/70 bg-slate-900/80 p-3">
-                  <div className="h-12 w-12 rounded-full border-2 border-cyan-300/65 bg-gradient-to-br from-cyan-300/20 to-slate-800" />
-                  <div>
-                    <p className="text-sm font-semibold text-white">Azi</p>
-                    <p className="text-[11px] text-cyan-100">Tier: Resonant</p>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-slate-700/70 bg-slate-900/80 p-3">
-                  <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Effective Aura</p>
-                  <p className="mt-1 text-lg font-semibold text-white">1,124</p>
-                  <div className="mt-2 h-2 rounded-full bg-slate-800">
-                    <div className="h-2 w-[62%] rounded-full bg-gradient-to-r from-cyan-300 to-blue-400" />
-                  </div>
-                </div>
-              </div>
-            </MockPanel>
-          </div>
-        </Section>
-
-        <Section className="pt-16 sm:pt-20">
-          <div className="rounded-3xl border border-slate-700/65 bg-slate-900/65 p-6 shadow-[0_20px_45px_rgba(0,0,0,0.34)] sm:p-8">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Social Proof Placeholder</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Built for teams, clans, and communities</h2>
-            <p className="mt-3 max-w-2xl text-sm text-slate-300 sm:text-base">
-              Early access groups are using Masq for match comms, project standups, and private community rooms.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {['Early Access', 'Clan Ready', 'Cross-Platform', 'Privacy-First'].map((label) => (
+          <div className="rounded-2xl border border-slate-700/65 bg-slate-900/65 p-4 sm:p-5">
+            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Built for teams, clans, and communities</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {['Early Access', 'Clan Ready', 'Focus Sessions', 'Privacy-Forward'].map((label) => (
                 <span
                   key={label}
                   className="rounded-full border border-slate-600/70 bg-slate-950/80 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-slate-300"
@@ -304,13 +348,133 @@ export function LandingPage() {
               ))}
             </div>
           </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <article className="rounded-2xl border border-slate-700/65 bg-slate-900/65 p-4">
+              <h3 className="text-sm font-semibold text-white">Competitive Teams</h3>
+              <p className="mt-2 text-sm text-slate-300">Run scrims with always-on comms and swap masks by role between rounds.</p>
+            </article>
+            <article className="rounded-2xl border border-slate-700/65 bg-slate-900/65 p-4">
+              <h3 className="text-sm font-semibold text-white">Private Communities</h3>
+              <p className="mt-2 text-sm text-slate-300">Host voice nights where recording stays off and identity stays contextual.</p>
+            </article>
+            <article className="rounded-2xl border border-slate-700/65 bg-slate-900/65 p-4">
+              <h3 className="text-sm font-semibold text-white">Dev and Study Squads</h3>
+              <p className="mt-2 text-sm text-slate-300">Share screens for pair sessions while keeping channels clean and focused.</p>
+            </article>
+            <article className="rounded-2xl border border-slate-700/65 bg-slate-900/65 p-4">
+              <h3 className="text-sm font-semibold text-white">Identity-driven Spaces</h3>
+              <p className="mt-2 text-sm text-slate-300">Use different masks for guilds, friends, and public lobbies without leakage.</p>
+            </article>
+          </div>
+        </Section>
+
+        <Section
+          id="privacy"
+          eyebrow="Privacy"
+          title="Privacy-first by design"
+          subtitle="Masq is built for real-time communication without surveillance-style defaults."
+          className="scroll-mt-24 pt-16 sm:pt-20"
+        >
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-2xl border border-slate-700/65 bg-slate-900/65 p-5">
+              <ul className="space-y-3">
+                <li className="flex items-start gap-2 text-sm text-slate-200">
+                  <span className="mt-0.5 text-cyan-200">
+                    <IconShield />
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-white">No call recording:</strong> recording is off by default.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2 text-sm text-slate-200">
+                  <span className="mt-0.5 text-cyan-200">
+                    <IconStack />
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-white">Minimal retention posture:</strong> keep only what sessions need.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2 text-sm text-slate-200">
+                  <span className="mt-0.5 text-cyan-200">
+                    <IconMask />
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-white">User-controlled identity:</strong> masks are chosen per context.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2 text-sm text-slate-200">
+                  <span className="mt-0.5 text-cyan-200">
+                    <IconBolt />
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-white">Clear media permissions:</strong> voice, video, and screen share
+                    controls are explicit.
+                  </span>
+                </li>
+              </ul>
+            </div>
+
+            <MockPanel title="Privacy Control Surface" subtitle="Session-level signals" badgeLabel="Recording Off" badgeTone="privacy">
+              <div className="space-y-2">
+                <div className="rounded-lg border border-slate-700/70 bg-slate-900/80 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Call Policy</p>
+                  <p className="mt-1 text-sm text-white">Recording disabled</p>
+                </div>
+                <div className="rounded-lg border border-slate-700/70 bg-slate-900/80 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Retention</p>
+                  <p className="mt-1 text-sm text-white">Minimal operational metadata</p>
+                </div>
+                <div className="rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs text-emerald-100">
+                  Permissions shown before mic/cam/share actions.
+                </div>
+              </div>
+            </MockPanel>
+          </div>
+        </Section>
+
+        <Section
+          id="pro"
+          eyebrow="Masq Pro"
+          title="Gamer-grade control, still privacy-forward"
+          subtitle="Upgrade clarity and expression without introducing recording."
+          className="scroll-mt-24 pt-16 sm:pt-20"
+        >
+          <div className="rounded-2xl border border-cyan-300/35 bg-gradient-to-br from-cyan-300/12 to-emerald-300/10 p-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-cyan-100">Coming soon</p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">Masq Pro</h3>
+                <p className="mt-2 text-sm text-slate-100">
+                  For power users who want finer RTC control, stronger layout options, and premium identity cosmetics.
+                </p>
+                <CTAButton href="mailto:pro@masq.local" variant="live" className="mt-5 min-w-[190px]">
+                  Get Pro (Coming soon)
+                </CTAButton>
+              </div>
+              <ul className="space-y-2 text-sm text-slate-100">
+                <li className="rounded-xl border border-cyan-300/25 bg-slate-950/35 px-3 py-2">
+                  Advanced layouts: pin and multi-pin participant views
+                </li>
+                <li className="rounded-xl border border-cyan-300/25 bg-slate-950/35 px-3 py-2">
+                  Screen share tuning: FPS, quality, cursor highlight
+                </li>
+                <li className="rounded-xl border border-cyan-300/25 bg-slate-950/35 px-3 py-2">
+                  Advanced audio: per-participant volume controls
+                </li>
+                <li className="rounded-xl border border-cyan-300/25 bg-slate-950/35 px-3 py-2">
+                  Premium aura styles: visual cosmetics only
+                </li>
+              </ul>
+            </div>
+          </div>
         </Section>
 
         <Section className="pt-16 sm:pt-20">
           <div className="rounded-3xl border border-cyan-300/35 bg-gradient-to-br from-cyan-300/12 to-emerald-300/10 p-6 sm:p-8">
-            <h2 className="text-2xl font-semibold text-white sm:text-3xl">Ready to run private, high-speed comms?</h2>
+            <h2 className="text-2xl font-semibold text-white sm:text-3xl">Ready to run cleaner, faster comms?</h2>
             <p className="mt-3 max-w-2xl text-sm text-slate-200 sm:text-base">
-              Create your account, launch your first server, and invite your crew. Keep mask identity and privacy controls in your hands.
+              Launch your crew space, pick your mask, and keep call control in your hands.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <CTAButton to="/register">Create Account</CTAButton>
@@ -329,13 +493,10 @@ export function LandingPage() {
             <p className="text-xs text-slate-400">Masq (c) {new Date().getFullYear()}</p>
             <nav className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
               <a href="#" className="hover:text-white">
-                Privacy
-              </a>
-              <a href="#" className="hover:text-white">
                 Terms
               </a>
               <a href="#" className="hover:text-white">
-                GitHub
+                Privacy
               </a>
               <a href="#" className="hover:text-white">
                 Contact

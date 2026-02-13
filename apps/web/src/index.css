@@ -124,6 +124,54 @@ select:focus-visible {
   }
 }
 
+@keyframes landing-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.6);
+    opacity: 0.9;
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(110, 231, 183, 0);
+    opacity: 1;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(110, 231, 183, 0);
+    opacity: 0.9;
+  }
+}
+
+@keyframes landing-wave-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes landing-aura-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes landing-cta-sheen {
+  0% {
+    transform: translateX(-140%);
+  }
+  100% {
+    transform: translateX(150%);
+  }
+}
+
 @layer components {
   .masq-surface {
     border-radius: var(--masq-radius-lg);
@@ -188,5 +236,72 @@ select:focus-visible {
     );
     background-size: 220% 220%;
     animation: landing-ring-shift 8s ease-in-out infinite;
+  }
+
+  .landing-cta-sheen {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  .landing-cta-sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    transform: translateX(-140%);
+    background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.32) 50%, transparent 100%);
+    opacity: 0.55;
+    pointer-events: none;
+    animation: landing-cta-sheen 3.6s ease-in-out infinite;
+  }
+
+  .landing-live-dot {
+    animation: landing-live-pulse 1.8s ease-in-out infinite;
+  }
+
+  .landing-wave {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 18px;
+  }
+
+  .landing-wave span {
+    width: 4px;
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(180deg, rgba(94, 234, 212, 1), rgba(56, 189, 248, 0.45));
+    transform-origin: center bottom;
+    animation: landing-wave-bounce 1.2s ease-in-out infinite;
+  }
+
+  .landing-wave span:nth-child(2) {
+    animation-delay: 0.12s;
+  }
+
+  .landing-wave span:nth-child(3) {
+    animation-delay: 0.24s;
+  }
+
+  .landing-wave span:nth-child(4) {
+    animation-delay: 0.36s;
+  }
+
+  .landing-wave span:nth-child(5) {
+    animation-delay: 0.48s;
+  }
+
+  .landing-wave span:nth-child(6) {
+    animation-delay: 0.6s;
+  }
+
+  .landing-aura-avatar {
+    box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.36), 0 0 18px rgba(34, 211, 238, 0.2);
+  }
+
+  .landing-aura-halo {
+    border: 1px solid rgba(103, 232, 249, 0.48);
+    animation: landing-aura-breathe 2.2s ease-in-out infinite;
   }
 }
