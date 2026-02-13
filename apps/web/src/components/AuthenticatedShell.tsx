@@ -44,8 +44,8 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
   const shellBottomPadding = rtc.sessionId ? 'calc(var(--masq-dock-height) + 1rem)' : '1rem';
 
   return (
-    <div className="w-full space-y-3" style={{ paddingBottom: shellBottomPadding }}>
-      <header className="masq-surface masq-panel rounded-3xl px-4 py-2.5">
+    <div className="flex h-full min-h-0 w-full flex-col gap-3" style={{ paddingBottom: shellBottomPadding }}>
+      <header className="masq-surface masq-panel shrink-0 rounded-3xl px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="rounded-lg border border-ink-700 bg-ink-900 px-2.5 py-1">
@@ -91,7 +91,7 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
       </header>
       {showGlobalSpacesSidebar ? (
         <>
-          <details className="masq-panel-muted lg:hidden rounded-2xl p-3">
+          <details className="masq-panel-muted shrink-0 rounded-2xl p-3 lg:hidden">
             <summary className="cursor-pointer list-none text-xs uppercase tracking-[0.16em] text-slate-300">
               Open Spaces
             </summary>
@@ -99,16 +99,16 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
               <SpacesSidebar activeMaskId={activeMask?.id ?? null} />
             </div>
           </details>
-          <div className="grid gap-4 lg:grid-cols-[280px,1fr]">
+          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px,1fr]">
             <SpacesSidebar
               activeMaskId={activeMask?.id ?? null}
-              className="hidden lg:block lg:sticky lg:top-4 lg:h-[calc(100vh-3rem)]"
+              className="hidden min-h-0 lg:block lg:h-full"
             />
-            <div>{children}</div>
+            <div className="min-h-0 overflow-hidden">{children}</div>
           </div>
         </>
       ) : (
-        children
+        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       )}
       <CallDock />
     </div>

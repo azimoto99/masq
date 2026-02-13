@@ -320,7 +320,7 @@ export function DmPage({ me }: DmPageProps) {
   const fallbackMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY) ?? me.masks[0]?.id ?? null;
 
   return (
-    <div className="w-full">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
         <button
           type="button"
@@ -342,8 +342,8 @@ export function DmPage({ me }: DmPageProps) {
         </button>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:h-full xl:min-h-0 xl:overflow-hidden`}>
           <div className="flex h-full flex-col gap-3">
             <button
               type="button"
@@ -391,7 +391,7 @@ export function DmPage({ me }: DmPageProps) {
           </div>
         </div>
 
-        <main className="order-1 xl:order-2 masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+        <main className="order-1 masq-panel rounded-2xl p-3 xl:order-2 xl:h-full xl:min-h-0 xl:overflow-hidden">
           <div className="flex h-full flex-col gap-3">
             {!selectedThreadId ? (
               <div className="masq-panel-muted rounded-xl p-4 text-sm text-slate-500">
@@ -437,7 +437,7 @@ export function DmPage({ me }: DmPageProps) {
 
                 <div
                   ref={messageListRef}
-                  className="min-h-[240px] flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/78 p-3"
+                  className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/78 p-3"
                 >
                   <div className="space-y-3">
                     {messages.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
@@ -551,7 +551,7 @@ export function DmPage({ me }: DmPageProps) {
           </div>
         </main>
 
-        <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+        <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-panel rounded-2xl p-3 xl:h-full xl:min-h-0 xl:overflow-hidden`}>
           <div className="flex h-full flex-col gap-3">
             <button
               type="button"

@@ -698,7 +698,7 @@ export function ServersPage({ me }: ServersPageProps) {
 
   return (
     <>
-      <div className="w-full">
+      <div className="flex h-full min-h-0 w-full flex-col">
         <div className="mb-3 flex flex-wrap items-center gap-2 xl:hidden">
           <button
             type="button"
@@ -727,8 +727,8 @@ export function ServersPage({ me }: ServersPageProps) {
             {mobileContextOpen ? 'Hide Members' : 'Show Members'}
           </button>
         </div>
-        <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-          <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:sticky xl:top-4 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+        <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+          <div className={`${mobileSidebarOpen ? 'block' : 'hidden'} order-2 xl:order-1 xl:block xl:h-full xl:min-h-0 xl:overflow-hidden`}>
             <div className="flex h-full flex-col gap-3">
               <button
                 type="button"
@@ -882,7 +882,7 @@ export function ServersPage({ me }: ServersPageProps) {
             </div>
           </div>
 
-          <main className="order-1 xl:order-2 masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden">
+          <main className="order-1 masq-panel rounded-2xl p-3 xl:order-2 xl:h-full xl:min-h-0 xl:overflow-hidden">
             <div className="flex h-full flex-col gap-3">
               {!selectedServerId ? (
                 <div className="flex h-full items-center justify-center rounded-xl border border-ink-700 bg-ink-900/70 p-6 text-sm text-slate-400">
@@ -993,9 +993,7 @@ export function ServersPage({ me }: ServersPageProps) {
 
                   <div
                     ref={messageListRef}
-                    className={`flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-2.5 ${
-                      showVideoStage ? 'min-h-[220px]' : 'min-h-[300px] lg:min-h-[420px]'
-                    }`}
+                    className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900/70 p-2.5"
                   >
                     <div className="space-y-2">
                       {channelMessages.length === 0 ? (
@@ -1117,7 +1115,7 @@ export function ServersPage({ me }: ServersPageProps) {
             </div>
           </main>
 
-          <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-panel rounded-2xl p-3 xl:h-[calc(100vh-3rem)] xl:overflow-hidden`}>
+          <aside className={`${mobileContextOpen ? 'block' : 'hidden'} order-3 xl:order-3 xl:block masq-panel rounded-2xl p-3 xl:h-full xl:min-h-0 xl:overflow-hidden`}>
             <div className="flex h-full flex-col gap-3">
               <button
                 type="button"
