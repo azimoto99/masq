@@ -8,6 +8,8 @@ export interface RtcMaskMetadata {
   displayName: string;
   color: string;
   avatarSeed: string;
+  auraTier?: 'DORMANT' | 'PRESENT' | 'RESONANT' | 'RADIANT' | 'ASCENDANT';
+  auraColor?: string;
 }
 
 export interface RtcParticipantView {

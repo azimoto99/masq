@@ -11,6 +11,9 @@ import { RoomChatPage } from './pages/RoomChatPage';
 import { FriendsPage } from './pages/FriendsPage';
 import { DmPage } from './pages/DmPage';
 import { ServersPage } from './pages/ServersPage';
+import { NarrativePage } from './pages/NarrativePage';
+import { PerksPage } from './pages/PerksPage';
+import { LandingPage } from './pages/LandingPage';
 import { RtcProvider, useRtc } from './rtc/RtcProvider';
 
 type SessionState =
@@ -155,7 +158,17 @@ export default function App() {
                       session.status === 'authenticated' ? (
                         <Navigate to="/home" replace />
                       ) : (
-                        <Navigate to="/login" replace />
+                        <LandingPage />
+                      )
+                    }
+                  />
+                  <Route
+                    path="/landing"
+                    element={
+                      session.status === 'authenticated' ? (
+                        <Navigate to="/home" replace />
+                      ) : (
+                        <LandingPage />
                       )
                     }
                   />
@@ -224,6 +237,20 @@ export default function App() {
                   <Route
                     path="/servers/:serverId/:channelId"
                     element={renderAuthenticated((me) => <ServersPage me={me} />)}
+                  />
+                  <Route
+                    path="/narrative"
+                    element={renderAuthenticated((me) => <NarrativePage me={me} />)}
+                  />
+                  <Route
+                    path="/narrative/:roomId"
+                    element={renderAuthenticated((me) => <NarrativePage me={me} />)}
+                  />
+                  <Route
+                    path="/perks"
+                    element={renderAuthenticated((me) => (
+                      <PerksPage me={me} onRefresh={refreshSession} />
+                    ))}
                   />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

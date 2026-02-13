@@ -5,6 +5,7 @@ interface MaskAvatarProps {
   displayName: string;
   color: string;
   avatarUploadId?: string | null;
+  auraColor?: string | null;
   sizeClassName?: string;
   textClassName?: string;
 }
@@ -27,6 +28,7 @@ export function MaskAvatar({
   displayName,
   color,
   avatarUploadId,
+  auraColor,
   sizeClassName = 'h-8 w-8',
   textClassName = 'text-[10px]',
 }: MaskAvatarProps) {
@@ -36,8 +38,12 @@ export function MaskAvatar({
 
   return (
     <div
-      className={`${sizeClassName} flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20`}
-      style={{ backgroundColor: color }}
+      className={`${sizeClassName} flex shrink-0 items-center justify-center overflow-hidden rounded-full border`}
+      style={{
+        backgroundColor: color,
+        borderColor: auraColor ? `${auraColor}cc` : 'rgba(255,255,255,0.2)',
+        boxShadow: auraColor ? `0 0 0 2px ${auraColor}33` : undefined,
+      }}
       aria-label={`${displayName} avatar`}
     >
       {imageUrl ? (

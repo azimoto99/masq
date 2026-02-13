@@ -1,9 +1,25 @@
-import type { PrismaClient } from '@prisma/client';
-import type { ServerPermission } from '@masq/shared';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
+  AuraEventKind,
+  AuraTier,
+  EntitlementKind,
+  EntitlementSource,
+  NarrativeRoomStatus,
+  PushToTalkMode,
+  ScreenshareQuality,
+  ServerMemberRole,
+  ServerPermission,
+} from '@masq/shared';
+import type {
+  AddNarrativeMembershipInput,
   AddRoomMembershipInput,
   AddServerMemberInput,
+  CreateAuraEventInput,
   CreateChannelInput,
+  CreateEntitlementInput,
+  CreateNarrativeMessageInput,
+  CreateNarrativeRoomInput,
+  CreateNarrativeSessionStateInput,
   CreateServerRoleInput,
   CreateServerInput,
   CreateServerInviteInput,
@@ -21,6 +37,9 @@ import type {
   MasqRepository,
   UpsertDmParticipantInput,
   UpsertFriendRequestInput,
+  UpsertNarrativeRoleAssignmentInput,
+  UpsertNarrativeTemplateInput,
+  UpdateUserRtcSettingsInput,
 } from './repository.js';
 
 const orderUserPair = (userAId: string, userBId: string) => {
@@ -195,6 +214,12 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
       });
     },
 
+    findMaskById(maskId: string) {
+      return prisma.mask.findUnique({
+        where: { id: maskId },
+      });
+    },
+
     createServer(input: CreateServerInput) {
       return prisma.server.create({
         data: {
@@ -209,6 +234,23 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
         where: { id: serverId },
         data: {
           channelIdentityMode: settings.channelIdentityMode,
+        },
+      });
+    },
+
+    updateServerRtcPolicy(
+      serverId: string,
+      settings: { stageModeEnabled?: boolean; screenshareMinimumRole?: ServerMemberRole },
+    ) {
+      return prisma.server.update({
+        where: { id: serverId },
+        data: {
+          ...(settings.stageModeEnabled !== undefined
+            ? { stageModeEnabled: settings.stageModeEnabled }
+            : {}),
+          ...(settings.screenshareMinimumRole !== undefined
+            ? { screenshareMinimumRole: settings.screenshareMinimumRole }
+            : {}),
         },
       });
     },
@@ -1183,6 +1225,452 @@ export const createPrismaRepository = (prisma: PrismaClient): MasqRepository => 
       });
 
       return updated.count;
+    },
+
+    findMaskAuraByMaskId(maskId: string) {
+      return prisma.maskAura.findUnique({
+        where: { maskId },
+      });
+    },
+
+    upsertMaskAura(maskId: string) {
+      return prisma.maskAura.upsert({
+        where: { maskId },
+        update: {},
+        create: {
+          maskId,
+        },
+      });
+    },
+
+    updateMaskAura(
+      maskId: string,
+      updates: {
+        score?: number;
+        tier?: AuraTier;
+        color?: string;
+        lastActivityAt?: Date;
+      },
+    ) {
+      return prisma.maskAura.update({
+        where: { maskId },
+        data: {
+          ...(updates.score !== undefined ? { score: updates.score } : {}),
+          ...(updates.tier !== undefined ? { tier: updates.tier } : {}),
+          ...(updates.color !== undefined ? { color: updates.color } : {}),
+          ...(updates.lastActivityAt !== undefined ? { lastActivityAt: updates.lastActivityAt } : {}),
+        },
+      });
+    },
+
+    listAuraEventsByMask(maskId: string, options?: { limit?: number; kind?: AuraEventKind; since?: Date }) {
+      return prisma.auraEvent.findMany({
+        where: {
+          maskId,
+          ...(options?.kind ? { kind: options.kind } : {}),
+          ...(options?.since ? { createdAt: { gte: options.since } } : {}),
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        ...(options?.limit ? { take: options.limit } : {}),
+      });
+    },
+
+    countAuraEventsByMaskKindSince(maskId: string, kind: AuraEventKind, since: Date) {
+      return prisma.auraEvent.count({
+        where: {
+          maskId,
+          kind,
+          createdAt: {
+            gte: since,
+          },
+        },
+      });
+    },
+
+    createAuraEvent(input: CreateAuraEventInput) {
+      return prisma.auraEvent.create({
+        data: {
+          maskId: input.maskId,
+          kind: input.kind,
+          weight: input.weight,
+          meta:
+            input.meta === undefined
+              ? undefined
+              : input.meta === null
+                ? Prisma.JsonNull
+                : (input.meta as Prisma.InputJsonValue),
+        },
+      });
+    },
+
+    listNarrativeTemplates() {
+      return prisma.narrativeTemplate.findMany({
+        orderBy: [{ createdAt: 'desc' }, { name: 'asc' }],
+      });
+    },
+
+    upsertNarrativeTemplateBySlug(input: UpsertNarrativeTemplateInput) {
+      return prisma.narrativeTemplate.upsert({
+        where: { slug: input.slug },
+        update: {
+          name: input.name,
+          description: input.description,
+          minPlayers: input.minPlayers,
+          maxPlayers: input.maxPlayers,
+          phases: input.phases as Prisma.InputJsonValue,
+          roles: input.roles as Prisma.InputJsonValue,
+          requiresEntitlement: input.requiresEntitlement,
+        },
+        create: {
+          slug: input.slug,
+          name: input.name,
+          description: input.description,
+          minPlayers: input.minPlayers,
+          maxPlayers: input.maxPlayers,
+          phases: input.phases as Prisma.InputJsonValue,
+          roles: input.roles as Prisma.InputJsonValue,
+          requiresEntitlement: input.requiresEntitlement,
+        },
+      });
+    },
+
+    findNarrativeTemplateById(templateId: string) {
+      return prisma.narrativeTemplate.findUnique({
+        where: { id: templateId },
+      });
+    },
+
+    createNarrativeRoom(input: CreateNarrativeRoomInput) {
+      return prisma.narrativeRoom.create({
+        data: {
+          templateId: input.templateId,
+          code: input.code,
+          hostMaskId: input.hostMaskId,
+          seed: input.seed,
+        },
+      });
+    },
+
+    findNarrativeRoomById(roomId: string) {
+      return prisma.narrativeRoom.findUnique({
+        where: { id: roomId },
+      });
+    },
+
+    findNarrativeRoomByCode(code: string) {
+      return prisma.narrativeRoom.findUnique({
+        where: { code },
+      });
+    },
+
+    listNarrativeRoomsByStatus(status: NarrativeRoomStatus) {
+      return prisma.narrativeRoom.findMany({
+        where: { status },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      });
+    },
+
+    updateNarrativeRoom(
+      roomId: string,
+      updates: {
+        status?: NarrativeRoomStatus;
+        endedAt?: Date | null;
+      },
+    ) {
+      return prisma.narrativeRoom.update({
+        where: { id: roomId },
+        data: {
+          ...(updates.status !== undefined ? { status: updates.status } : {}),
+          ...(updates.endedAt !== undefined ? { endedAt: updates.endedAt } : {}),
+        },
+      });
+    },
+
+    addNarrativeMembership(input: AddNarrativeMembershipInput) {
+      return prisma.narrativeMembership.upsert({
+        where: {
+          roomId_maskId: {
+            roomId: input.roomId,
+            maskId: input.maskId,
+          },
+        },
+        update: {
+          leftAt: null,
+          isReady: input.isReady ?? false,
+        },
+        create: {
+          roomId: input.roomId,
+          maskId: input.maskId,
+          isReady: input.isReady ?? false,
+        },
+        include: {
+          mask: true,
+        },
+      });
+    },
+
+    updateNarrativeMembershipReady(roomId: string, maskId: string, isReady: boolean) {
+      return prisma.narrativeMembership.update({
+        where: {
+          roomId_maskId: {
+            roomId,
+            maskId,
+          },
+        },
+        data: {
+          isReady,
+        },
+        include: {
+          mask: true,
+        },
+      });
+    },
+
+    async removeNarrativeMembership(roomId: string, maskId: string, leftAt: Date) {
+      await prisma.narrativeMembership.updateMany({
+        where: {
+          roomId,
+          maskId,
+          leftAt: null,
+        },
+        data: {
+          leftAt,
+          isReady: false,
+        },
+      });
+    },
+
+    async findNarrativeMembership(roomId: string, maskId: string) {
+      const membership = await prisma.narrativeMembership.findUnique({
+        where: {
+          roomId_maskId: {
+            roomId,
+            maskId,
+          },
+        },
+        include: {
+          mask: true,
+        },
+      });
+
+      if (!membership || membership.leftAt) {
+        return null;
+      }
+
+      return membership;
+    },
+
+    listNarrativeMemberships(roomId: string, includeInactive = false) {
+      return prisma.narrativeMembership.findMany({
+        where: {
+          roomId,
+          ...(includeInactive ? {} : { leftAt: null }),
+        },
+        include: {
+          mask: true,
+        },
+        orderBy: {
+          joinedAt: 'asc',
+        },
+      });
+    },
+
+    upsertNarrativeSessionState(input: CreateNarrativeSessionStateInput) {
+      return prisma.narrativeSessionState.upsert({
+        where: { roomId: input.roomId },
+        update: {
+          phaseIndex: input.phaseIndex,
+          phaseEndsAt: input.phaseEndsAt,
+        },
+        create: {
+          roomId: input.roomId,
+          phaseIndex: input.phaseIndex,
+          phaseEndsAt: input.phaseEndsAt,
+          startedAt: input.startedAt ?? new Date(),
+        },
+      });
+    },
+
+    findNarrativeSessionState(roomId: string) {
+      return prisma.narrativeSessionState.findUnique({
+        where: { roomId },
+      });
+    },
+
+    createNarrativeRoleAssignment(input: UpsertNarrativeRoleAssignmentInput) {
+      return prisma.narrativeRoleAssignment.upsert({
+        where: {
+          roomId_maskId: {
+            roomId: input.roomId,
+            maskId: input.maskId,
+          },
+        },
+        update: {
+          roleKey: input.roleKey,
+          secretPayload:
+            input.secretPayload === undefined
+              ? undefined
+              : input.secretPayload === null
+                ? Prisma.JsonNull
+                : (input.secretPayload as Prisma.InputJsonValue),
+        },
+        create: {
+          roomId: input.roomId,
+          maskId: input.maskId,
+          roleKey: input.roleKey,
+          secretPayload:
+            input.secretPayload === undefined
+              ? undefined
+              : input.secretPayload === null
+                ? Prisma.JsonNull
+                : (input.secretPayload as Prisma.InputJsonValue),
+        },
+      });
+    },
+
+    listNarrativeRoleAssignments(roomId: string) {
+      return prisma.narrativeRoleAssignment.findMany({
+        where: { roomId },
+      });
+    },
+
+    findNarrativeRoleAssignment(roomId: string, maskId: string) {
+      return prisma.narrativeRoleAssignment.findUnique({
+        where: {
+          roomId_maskId: {
+            roomId,
+            maskId,
+          },
+        },
+      });
+    },
+
+    createNarrativeMessage(input: CreateNarrativeMessageInput) {
+      return prisma.narrativeMessage.create({
+        data: {
+          roomId: input.roomId,
+          maskId: input.maskId,
+          body: input.body,
+        },
+        include: {
+          mask: true,
+        },
+      });
+    },
+
+    listNarrativeMessages(roomId: string, limit = 100) {
+      return prisma.narrativeMessage.findMany({
+        where: { roomId },
+        include: {
+          mask: true,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+        take: Math.max(1, Math.min(limit, 500)),
+      });
+    },
+
+    listEntitlementsByUser(userId: string) {
+      return prisma.entitlement.findMany({
+        where: { userId },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    },
+
+    createEntitlement(input: CreateEntitlementInput) {
+      return prisma.entitlement.create({
+        data: {
+          userId: input.userId,
+          kind: input.kind as EntitlementKind,
+          source: input.source as EntitlementSource,
+          expiresAt: input.expiresAt,
+        },
+      });
+    },
+
+    listCosmeticUnlocksByUser(userId: string) {
+      return prisma.cosmeticUnlock.findMany({
+        where: { userId },
+        orderBy: {
+          unlockedAt: 'desc',
+        },
+      });
+    },
+
+    findUserRtcSettings(userId: string) {
+      return prisma.userRtcSettings.findUnique({
+        where: { userId },
+      }).then((settings) => {
+        if (!settings) {
+          return null;
+        }
+
+        return {
+          ...settings,
+          pushToTalkMode: (settings.pushToTalkMode.toUpperCase() as PushToTalkMode),
+          defaultScreenshareFps: settings.defaultScreenshareFps === 60 ? 60 : 30,
+          defaultScreenshareQuality: (settings.defaultScreenshareQuality.toLowerCase() as ScreenshareQuality),
+        };
+      });
+    },
+
+    upsertUserRtcSettings(userId: string, updates: UpdateUserRtcSettingsInput) {
+      return prisma.userRtcSettings
+        .upsert({
+          where: { userId },
+          update: {
+            ...(updates.advancedNoiseSuppression !== undefined
+              ? { advancedNoiseSuppression: updates.advancedNoiseSuppression }
+              : {}),
+            ...(updates.pushToTalkMode !== undefined ? { pushToTalkMode: updates.pushToTalkMode } : {}),
+            ...(updates.pushToTalkHotkey !== undefined ? { pushToTalkHotkey: updates.pushToTalkHotkey } : {}),
+            ...(updates.multiPinEnabled !== undefined ? { multiPinEnabled: updates.multiPinEnabled } : {}),
+            ...(updates.pictureInPictureEnabled !== undefined
+              ? { pictureInPictureEnabled: updates.pictureInPictureEnabled }
+              : {}),
+            ...(updates.defaultScreenshareFps !== undefined
+              ? { defaultScreenshareFps: updates.defaultScreenshareFps }
+              : {}),
+            ...(updates.defaultScreenshareQuality !== undefined
+              ? { defaultScreenshareQuality: updates.defaultScreenshareQuality }
+              : {}),
+            ...(updates.cursorHighlight !== undefined ? { cursorHighlight: updates.cursorHighlight } : {}),
+            ...(updates.selectedAuraStyle !== undefined ? { selectedAuraStyle: updates.selectedAuraStyle } : {}),
+          },
+          create: {
+            userId,
+            ...(updates.advancedNoiseSuppression !== undefined
+              ? { advancedNoiseSuppression: updates.advancedNoiseSuppression }
+              : {}),
+            ...(updates.pushToTalkMode !== undefined ? { pushToTalkMode: updates.pushToTalkMode } : {}),
+            ...(updates.pushToTalkHotkey !== undefined ? { pushToTalkHotkey: updates.pushToTalkHotkey } : {}),
+            ...(updates.multiPinEnabled !== undefined ? { multiPinEnabled: updates.multiPinEnabled } : {}),
+            ...(updates.pictureInPictureEnabled !== undefined
+              ? { pictureInPictureEnabled: updates.pictureInPictureEnabled }
+              : {}),
+            ...(updates.defaultScreenshareFps !== undefined
+              ? { defaultScreenshareFps: updates.defaultScreenshareFps }
+              : {}),
+            ...(updates.defaultScreenshareQuality !== undefined
+              ? { defaultScreenshareQuality: updates.defaultScreenshareQuality }
+              : {}),
+            ...(updates.cursorHighlight !== undefined ? { cursorHighlight: updates.cursorHighlight } : {}),
+            ...(updates.selectedAuraStyle !== undefined ? { selectedAuraStyle: updates.selectedAuraStyle } : {}),
+          },
+        })
+        .then((settings) => ({
+          ...settings,
+          pushToTalkMode: (settings.pushToTalkMode.toUpperCase() as PushToTalkMode),
+          defaultScreenshareFps: settings.defaultScreenshareFps === 60 ? 60 : 30,
+          defaultScreenshareQuality: (settings.defaultScreenshareQuality.toLowerCase() as ScreenshareQuality),
+        }));
     },
   };
 };

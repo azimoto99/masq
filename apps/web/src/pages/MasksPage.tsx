@@ -1,8 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { MAX_MASKS_PER_USER, type MeResponse } from '@masq/shared';
-import { ApiError, createMask, deleteMask, setMaskAvatar } from '../lib/api';
+import { ApiError, createMask, deleteMask, getMaskAura, setMaskAvatar } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
 import { MaskAvatar } from '../components/MaskAvatar';
+import { AuraBadge } from '../components/AuraBadge';
 
 interface MasksPageProps {
   me: MeResponse;
@@ -24,6 +25,21 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
   const [avatarSeed, setAvatarSeed] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [avatarUploadingMaskId, setAvatarUploadingMaskId] = useState<string | null>(null);
+  const [auraLoadingMaskId, setAuraLoadingMaskId] = useState<string | null>(null);
+  const [auraDetailsByMask, setAuraDetailsByMask] = useState<Record<string, Awaited<ReturnType<typeof getMaskAura>>>>(
+    () =>
+      Object.fromEntries(
+        me.masks
+          .filter((mask) => mask.aura)
+          .map((mask) => [
+            mask.id,
+            {
+              aura: mask.aura!,
+              recentEvents: [],
+            },
+          ]),
+      ),
+  );
   const [error, setError] = useState<string | null>(null);
 
   const activeMask = useMemo(
@@ -112,6 +128,22 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
     }
   };
 
+  const handleLoadAura = async (maskId: string) => {
+    setAuraLoadingMaskId(maskId);
+    setError(null);
+    try {
+      const aura = await getMaskAura(maskId);
+      setAuraDetailsByMask((current) => ({
+        ...current,
+        [maskId]: aura,
+      }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to load aura details');
+    } finally {
+      setAuraLoadingMaskId(null);
+    }
+  };
+
   const randomizeDraftAppearance = () => {
     setColor(randomHexColor());
     if (!avatarSeed.trim()) {
@@ -133,6 +165,12 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
           <div>
             Active mask: <span className="text-white">{activeMask?.displayName ?? 'none'}</span>
           </div>
+          <div className="mt-1">
+            Aura:{' '}
+            <span className="text-white">
+              {activeMask?.aura ? `${activeMask.aura.tier} (${activeMask.aura.effectiveScore})` : 'loading'}
+            </span>
+          </div>
           <div>
             Masks: {me.masks.length}/{MAX_MASKS_PER_USER}
           </div>
@@ -152,6 +190,8 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
 
             {me.masks.map((mask) => {
               const selected = mask.id === activeMaskId;
+              const auraDetails = auraDetailsByMask[mask.id];
+              const auraSummary = auraDetails?.aura ?? mask.aura;
               return (
                 <article
                   key={mask.id}
@@ -167,12 +207,19 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
                         displayName={mask.displayName}
                         color={mask.color}
                         avatarUploadId={mask.avatarUploadId}
+                        auraColor={auraSummary?.color}
                         sizeClassName="h-10 w-10"
                         textClassName="text-xs"
                       />
                       <div>
                         <p className="text-lg font-medium text-white">{mask.displayName}</p>
                         <p className="text-xs text-slate-500">seed: {mask.avatarSeed}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <AuraBadge aura={auraSummary} showLabel />
+                          <p className="text-xs text-slate-400">
+                            {auraSummary ? `Score ${auraSummary.effectiveScore}` : 'Aura loading'}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
@@ -204,8 +251,32 @@ export function MasksPage({ me, onRefresh }: MasksPageProps) {
                       >
                         Delete
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleLoadAura(mask.id);
+                        }}
+                        disabled={auraLoadingMaskId === mask.id}
+                        className="rounded-lg border border-cyan-500/40 px-3 py-1 text-xs uppercase tracking-[0.18em] text-cyan-200 transition hover:border-cyan-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {auraLoadingMaskId === mask.id ? 'Loading Aura' : 'Recent Aura'}
+                      </button>
                     </div>
                   </div>
+
+                  {auraDetails?.recentEvents && auraDetails.recentEvents.length > 0 ? (
+                    <div className="mt-3 rounded-lg border border-ink-700 bg-ink-900/70 p-2.5">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Recent Aura Activity</p>
+                      <div className="mt-2 space-y-1.5">
+                        {auraDetails.recentEvents.slice(0, 5).map((event) => (
+                          <div key={event.id} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-slate-300">{event.kind}</span>
+                            <span className="text-slate-500">+{event.weight}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}

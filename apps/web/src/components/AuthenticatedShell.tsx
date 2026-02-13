@@ -1,6 +1,6 @@
 import type { MeResponse } from '@masq/shared';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo';
 import { SpacesSidebar } from './SpacesSidebar';
@@ -21,9 +21,32 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
   const navigate = useNavigate();
   const rtc = useRtc();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [activeMaskId, setActiveMaskId] = useState<string>(
+    () => window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY) ?? me.masks[0]?.id ?? '',
+  );
+  const activeMask = me.masks.find((mask) => mask.id === activeMaskId) ?? me.masks[0] ?? null;
 
-  const persistedMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY);
-  const activeMask = me.masks.find((mask) => mask.id === persistedMaskId) ?? me.masks[0] ?? null;
+  useEffect(() => {
+    if (me.masks.length === 0) {
+      setActiveMaskId('');
+      window.localStorage.removeItem(ACTIVE_MASK_STORAGE_KEY);
+      return;
+    }
+
+    const stillExists = me.masks.some((mask) => mask.id === activeMaskId);
+    if (stillExists) {
+      return;
+    }
+
+    const nextMaskId = me.masks[0].id;
+    setActiveMaskId(nextMaskId);
+    window.localStorage.setItem(ACTIVE_MASK_STORAGE_KEY, nextMaskId);
+  }, [activeMaskId, me.masks]);
+
+  const onChangeActiveMask = (nextMaskId: string) => {
+    setActiveMaskId(nextMaskId);
+    window.localStorage.setItem(ACTIVE_MASK_STORAGE_KEY, nextMaskId);
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -39,7 +62,8 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
     !location.pathname.startsWith('/servers') &&
     (location.pathname.startsWith('/friends') ||
       location.pathname.startsWith('/masks') ||
-      location.pathname.startsWith('/home'));
+      location.pathname.startsWith('/home') ||
+      location.pathname.startsWith('/perks'));
 
   const shellBottomPadding = rtc.sessionId ? 'calc(var(--masq-dock-height) + 1rem)' : '1rem';
 
@@ -58,16 +82,28 @@ export function AuthenticatedShell({ me, onLogout, children }: AuthenticatedShel
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1">
-              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Active Mask</p>
-              <p className="flex items-center gap-1.5 text-xs text-slate-200">
+            <label className="rounded-md border border-ink-700 bg-ink-900/80 px-2 py-1">
+              <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-500">Active Mask</span>
+              <span className="mt-0.5 flex items-center gap-1.5">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full"
                   style={{ backgroundColor: activeMask?.color ?? '#78e6da' }}
                 />
-                {activeMask?.displayName ?? 'none'}
-              </p>
-            </div>
+                <select
+                  className="min-w-[116px] rounded-md border border-ink-700 bg-ink-900 px-1.5 py-0.5 text-xs text-slate-200 focus:border-neon-400"
+                  value={activeMask?.id ?? ''}
+                  onChange={(event) => onChangeActiveMask(event.target.value)}
+                  disabled={me.masks.length === 0}
+                >
+                  {me.masks.length === 0 ? <option value="">none</option> : null}
+                  {me.masks.map((mask) => (
+                    <option key={mask.id} value={mask.id}>
+                      {mask.displayName}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </label>
             <a
               href={RELEASES_URL}
               target="_blank"

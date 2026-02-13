@@ -13,6 +13,18 @@ const baseUser: MeResponse['user'] = {
   createdAt: new Date().toISOString(),
 };
 
+const baseRtcSettings: MeResponse['rtcSettings'] = {
+  advancedNoiseSuppression: false,
+  pushToTalkMode: 'HOLD',
+  pushToTalkHotkey: 'V',
+  multiPinEnabled: false,
+  pictureInPictureEnabled: false,
+  defaultScreenshareFps: 30,
+  defaultScreenshareQuality: 'balanced',
+  cursorHighlight: true,
+  selectedAuraStyle: 'AURA_STYLE_BASE',
+};
+
 describe('HomePage', () => {
   afterEach(() => {
     window.localStorage.clear();
@@ -41,6 +53,11 @@ describe('HomePage', () => {
           createdAt: new Date().toISOString(),
         },
       ],
+      entitlements: [],
+      cosmeticUnlocks: [],
+      currentPlan: 'FREE',
+      rtcSettings: baseRtcSettings,
+      featureAccess: [],
     };
 
     window.localStorage.setItem(ACTIVE_MASK_STORAGE_KEY, me.masks[1].id);
@@ -59,6 +76,11 @@ describe('HomePage', () => {
     const me: MeResponse = {
       user: baseUser,
       masks: [],
+      entitlements: [],
+      cosmeticUnlocks: [],
+      currentPlan: 'FREE',
+      rtcSettings: baseRtcSettings,
+      featureAccess: [],
     };
 
     render(

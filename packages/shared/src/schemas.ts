@@ -21,6 +21,12 @@ export const MAX_SERVER_ROLE_ASSIGNMENTS = 24;
 export const MAX_RTC_PARTICIPANT_DISPLAY_NAME_LENGTH = 40;
 export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const MAX_IMAGE_FILENAME_LENGTH = 180;
+export const MAX_NARRATIVE_TEMPLATE_NAME_LENGTH = 80;
+export const MAX_NARRATIVE_TEMPLATE_SLUG_LENGTH = 64;
+export const MAX_NARRATIVE_DESCRIPTION_LENGTH = 300;
+export const MAX_NARRATIVE_ROLE_NAME_LENGTH = 60;
+export const MAX_COSMETIC_UNLOCK_KEY_LENGTH = 64;
+export const MAX_PUSH_TO_TALK_HOTKEY_LENGTH = 48;
 
 export const ALLOWED_IMAGE_CONTENT_TYPES = [
   'image/jpeg',
@@ -55,6 +61,51 @@ export type UploadKind = z.infer<typeof UploadKindSchema>;
 
 export const UploadContextTypeSchema = z.enum(['SERVER_CHANNEL', 'DM_THREAD', 'EPHEMERAL_ROOM']);
 export type UploadContextType = z.infer<typeof UploadContextTypeSchema>;
+
+export const AuraTierSchema = z.enum(['DORMANT', 'PRESENT', 'RESONANT', 'RADIANT', 'ASCENDANT']);
+export type AuraTier = z.infer<typeof AuraTierSchema>;
+
+export const AuraEventKindSchema = z.enum([
+  'MESSAGE_SENT',
+  'REACTION_RECEIVED',
+  'MENTIONED',
+  'VOICE_MINUTES',
+  'SESSION_HOSTED',
+  'SESSION_JOINED',
+]);
+export type AuraEventKind = z.infer<typeof AuraEventKindSchema>;
+
+export const NarrativeRoomStatusSchema = z.enum(['LOBBY', 'RUNNING', 'ENDED']);
+export type NarrativeRoomStatus = z.infer<typeof NarrativeRoomStatusSchema>;
+
+export const PlanSchema = z.enum(['FREE', 'PRO']);
+export type Plan = z.infer<typeof PlanSchema>;
+
+export const EntitlementKindSchema = PlanSchema;
+export type EntitlementKind = z.infer<typeof EntitlementKindSchema>;
+
+export const EntitlementSourceSchema = z.enum(['STRIPE', 'DEV_MANUAL']);
+export type EntitlementSource = z.infer<typeof EntitlementSourceSchema>;
+
+export const FeatureKeySchema = z.enum([
+  'PRO_ADVANCED_DEVICE_CONTROLS',
+  'PRO_ADVANCED_LAYOUT',
+  'PRO_SCREENSHARE_ENHANCEMENTS',
+  'PRO_AURA_STYLES',
+  'SERVER_OWNER_HIGH_RTC_CAP',
+  'SERVER_OWNER_STAGE_MODE',
+  'SERVER_OWNER_SCREENSHARE_POLICY',
+]);
+export type FeatureKey = z.infer<typeof FeatureKeySchema>;
+
+export const StageRoleSchema = z.enum(['SPEAKER', 'AUDIENCE']);
+export type StageRole = z.infer<typeof StageRoleSchema>;
+
+export const PushToTalkModeSchema = z.enum(['HOLD', 'TOGGLE']);
+export type PushToTalkMode = z.infer<typeof PushToTalkModeSchema>;
+
+export const ScreenshareQualitySchema = z.enum(['balanced', 'clarity', 'motion']);
+export type ScreenshareQuality = z.infer<typeof ScreenshareQualitySchema>;
 
 export const ServerPermissionSchema = z.enum([
   'ManageChannels',
@@ -91,6 +142,60 @@ export const LoginRequestSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+export const AuraSummarySchema = z.object({
+  maskId: z.string().uuid(),
+  score: z.number().int().min(0),
+  effectiveScore: z.number().int().min(0),
+  tier: AuraTierSchema,
+  tierName: z.string().min(1).max(40),
+  color: z.string().min(1).max(32),
+  nextTierAt: z.number().int().min(0).nullable(),
+  percentToNext: z.number().min(0).max(100),
+  lastActivityAt: z.string().datetime(),
+});
+
+export const AuraEventSchema = z.object({
+  id: z.string().uuid(),
+  maskId: z.string().uuid(),
+  kind: AuraEventKindSchema,
+  weight: z.number().int().min(0),
+  meta: z.unknown().nullable().optional(),
+  createdAt: z.string().datetime(),
+});
+
+export const EntitlementSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  kind: EntitlementKindSchema,
+  source: EntitlementSourceSchema,
+  expiresAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+});
+
+export const CosmeticUnlockSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  key: z.string().min(1).max(MAX_COSMETIC_UNLOCK_KEY_LENGTH),
+  unlockedAt: z.string().datetime(),
+});
+
+export const UserRtcSettingsSchema = z.object({
+  advancedNoiseSuppression: z.boolean(),
+  pushToTalkMode: PushToTalkModeSchema,
+  pushToTalkHotkey: z.string().min(1).max(MAX_PUSH_TO_TALK_HOTKEY_LENGTH),
+  multiPinEnabled: z.boolean(),
+  pictureInPictureEnabled: z.boolean(),
+  defaultScreenshareFps: z.union([z.literal(30), z.literal(60)]),
+  defaultScreenshareQuality: ScreenshareQualitySchema,
+  cursorHighlight: z.boolean(),
+  selectedAuraStyle: z.string().min(1).max(MAX_COSMETIC_UNLOCK_KEY_LENGTH),
+});
+
+export const FeatureAccessSchema = z.object({
+  feature: FeatureKeySchema,
+  enabled: z.boolean(),
+});
+
 export const MaskSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
@@ -98,6 +203,7 @@ export const MaskSchema = z.object({
   color: z.string().min(1).max(32),
   avatarSeed: z.string().min(1).max(80),
   avatarUploadId: z.string().uuid().nullable().optional(),
+  aura: AuraSummarySchema.optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -139,6 +245,11 @@ export const LogoutResponseSchema = z.object({
 export const MeResponseSchema = z.object({
   user: UserSchema,
   masks: z.array(MaskSchema),
+  entitlements: z.array(EntitlementSchema),
+  cosmeticUnlocks: z.array(CosmeticUnlockSchema),
+  currentPlan: PlanSchema,
+  rtcSettings: UserRtcSettingsSchema,
+  featureAccess: z.array(FeatureAccessSchema),
 });
 
 export const DefaultMaskSummarySchema = z.object({
@@ -290,11 +401,20 @@ export const ServerParamsSchema = z.object({
   serverId: z.string().uuid(),
 });
 
+export const ServerRtcPolicySchema = z.object({
+  ownerProPerksActive: z.boolean(),
+  participantCap: z.number().int().min(1),
+  stageModeEnabled: z.boolean(),
+  screenshareMinimumRole: ServerMemberRoleSchema,
+  recordingAllowed: z.literal(false),
+});
+
 export const GetServerResponseSchema = z.object({
   server: ServerSchema,
   channels: z.array(ChannelSchema),
   members: z.array(ServerMemberSchema),
   myPermissions: z.array(ServerPermissionSchema),
+  rtcPolicy: ServerRtcPolicySchema,
 });
 
 export const CreateServerChannelRequestSchema = z.object({
@@ -349,6 +469,21 @@ export const UpdateServerSettingsRequestSchema = z.object({
 export const UpdateServerSettingsResponseSchema = z.object({
   success: z.literal(true),
   server: ServerSchema,
+});
+
+export const UpdateServerRtcPolicyRequestSchema = z
+  .object({
+    stageModeEnabled: z.boolean().optional(),
+    screenshareMinimumRole: ServerMemberRoleSchema.optional(),
+  })
+  .refine((value) => value.stageModeEnabled !== undefined || value.screenshareMinimumRole !== undefined, {
+    message: 'Provide at least one field',
+    path: ['stageModeEnabled'],
+  });
+
+export const UpdateServerRtcPolicyResponseSchema = z.object({
+  success: z.literal(true),
+  rtcPolicy: ServerRtcPolicySchema,
 });
 
 export const ServerRoleParamsSchema = z.object({
@@ -436,6 +571,263 @@ export const DeleteMaskParamsSchema = z.object({
 
 export const DeleteMaskResponseSchema = z.object({
   success: z.literal(true),
+});
+
+export const MaskAuraParamsSchema = z.object({
+  maskId: z.string().uuid(),
+});
+
+export const GetMaskAuraResponseSchema = z.object({
+  aura: AuraSummarySchema,
+  recentEvents: z.array(AuraEventSchema),
+});
+
+export const NarrativePhaseSchema = z
+  .object({
+    key: z.string().min(1).max(40),
+    label: z.string().min(1).max(60),
+    durationSec: z.number().int().min(1).max(3600),
+    allowTextChat: z.boolean().optional(),
+    allowVoiceJoin: z.boolean().optional(),
+    allowScreenshare: z.boolean().optional(),
+    // Backward-compatible aliases from earlier skeleton payloads.
+    allowChat: z.boolean().optional(),
+    allowVoice: z.boolean().optional(),
+  })
+  .transform((value) => ({
+    key: value.key,
+    label: value.label,
+    durationSec: value.durationSec,
+    allowTextChat: value.allowTextChat ?? value.allowChat ?? true,
+    allowVoiceJoin: value.allowVoiceJoin ?? value.allowVoice ?? true,
+    allowScreenshare: value.allowScreenshare ?? false,
+  }));
+
+export const NarrativeRoleDefinitionSchema = z.object({
+  key: z.string().min(1).max(40),
+  name: z.string().min(1).max(MAX_NARRATIVE_ROLE_NAME_LENGTH),
+  description: z.string().min(1).max(MAX_NARRATIVE_DESCRIPTION_LENGTH),
+  count: z.number().int().min(1).max(100),
+  secretPayload: z.unknown().optional(),
+});
+
+export const NarrativeTemplateSchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string().min(1).max(MAX_NARRATIVE_TEMPLATE_SLUG_LENGTH),
+  name: z.string().min(1).max(MAX_NARRATIVE_TEMPLATE_NAME_LENGTH),
+  description: z.string().min(1).max(MAX_NARRATIVE_DESCRIPTION_LENGTH),
+  minPlayers: z.number().int().min(2).max(100),
+  maxPlayers: z.number().int().min(2).max(100),
+  phases: z.array(NarrativePhaseSchema).min(1),
+  roles: z.array(NarrativeRoleDefinitionSchema).min(1),
+  requiresEntitlement: EntitlementKindSchema.nullable().optional(),
+  createdAt: z.string().datetime(),
+});
+
+export const NarrativeRoomSchema = z.object({
+  id: z.string().uuid(),
+  templateId: z.string().uuid(),
+  code: z.string().min(4).max(24),
+  hostMaskId: z.string().uuid(),
+  seed: z.number().int().min(0),
+  status: NarrativeRoomStatusSchema,
+  createdAt: z.string().datetime(),
+  endedAt: z.string().datetime().nullable(),
+});
+
+export const NarrativeMembershipSchema = z.object({
+  id: z.string().uuid(),
+  roomId: z.string().uuid(),
+  maskId: z.string().uuid(),
+  isReady: z.boolean(),
+  joinedAt: z.string().datetime(),
+  leftAt: z.string().datetime().nullable(),
+});
+
+export const NarrativeSessionStateSchema = z.object({
+  roomId: z.string().uuid(),
+  phaseIndex: z.number().int().min(0),
+  phaseEndsAt: z.string().datetime().nullable(),
+  startedAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const NarrativeRoleAssignmentSchema = z.object({
+  id: z.string().uuid(),
+  roomId: z.string().uuid(),
+  maskId: z.string().uuid(),
+  roleKey: z.string().min(1).max(40),
+  secretPayload: z.unknown().nullable().optional(),
+  createdAt: z.string().datetime(),
+});
+
+export const NarrativeMaskIdentitySchema = z.object({
+  maskId: z.string().uuid(),
+  displayName: z.string().min(1).max(40),
+  avatarSeed: z.string().min(1).max(80),
+  color: z.string().min(1).max(32),
+  avatarUploadId: z.string().uuid().nullable().optional(),
+  aura: z
+    .object({
+      score: z.number().int().min(0),
+      effectiveScore: z.number().int().min(0),
+      tier: AuraTierSchema,
+      color: z.string().min(1).max(32),
+      nextTierAt: z.number().int().min(0).nullable(),
+      lastActivityAt: z.string().datetime(),
+    })
+    .optional(),
+});
+
+export const NarrativeMessageSchema = z.object({
+  id: z.string().uuid(),
+  roomId: z.string().uuid(),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH),
+  createdAt: z.string().datetime(),
+  mask: NarrativeMaskIdentitySchema,
+});
+
+export const NarrativeRoomMemberStateSchema = z.object({
+  membership: NarrativeMembershipSchema,
+  mask: NarrativeMaskIdentitySchema,
+});
+
+export const NarrativeRoomStateSchema = z.object({
+  room: NarrativeRoomSchema,
+  template: NarrativeTemplateSchema,
+  members: z.array(NarrativeRoomMemberStateSchema),
+  state: NarrativeSessionStateSchema.nullable(),
+});
+
+export const NarrativeSessionSummarySchema = z.object({
+  durationSec: z.number().int().min(0),
+  participantCount: z.number().int().min(0),
+  endedAt: z.string().datetime().nullable(),
+});
+
+export const NarrativeRoomParamsSchema = z.object({
+  roomId: z.string().uuid(),
+});
+
+export const ListNarrativeTemplatesResponseSchema = z.object({
+  templates: z.array(NarrativeTemplateSchema),
+});
+
+export const CreateNarrativeRoomRequestSchema = z.object({
+  templateId: z.string().uuid(),
+  hostMaskId: z.string().uuid(),
+});
+
+export const CreateNarrativeRoomResponseSchema = z.object({
+  room: NarrativeRoomSchema,
+});
+
+export const JoinNarrativeRoomRequestSchema = z.object({
+  code: z.string().min(4).max(24),
+  maskId: z.string().uuid(),
+});
+
+export const JoinNarrativeRoomResponseSchema = z.object({
+  success: z.literal(true),
+  roomId: z.string().uuid(),
+});
+
+export const LeaveNarrativeRoomRequestSchema = z.object({
+  maskId: z.string().uuid(),
+});
+
+export const LeaveNarrativeRoomResponseSchema = z.object({
+  success: z.literal(true),
+});
+
+export const SetNarrativeReadyRequestSchema = z.object({
+  maskId: z.string().uuid(),
+  ready: z.boolean(),
+});
+
+export const SetNarrativeReadyResponseSchema = z.object({
+  success: z.literal(true),
+  membership: NarrativeMembershipSchema,
+});
+
+export const NarrativeActorRequestSchema = z.object({
+  actorMaskId: z.string().uuid(),
+});
+
+export const GetNarrativeRoomResponseSchema = z.object({
+  room: NarrativeRoomSchema,
+  template: NarrativeTemplateSchema,
+  members: z.array(NarrativeRoomMemberStateSchema),
+  state: NarrativeSessionStateSchema.nullable(),
+  myRole: NarrativeRoleAssignmentSchema.nullable(),
+  revealedRoles: z.array(NarrativeRoleAssignmentSchema).optional(),
+  recentMessages: z.array(NarrativeMessageSchema),
+  sessionSummary: NarrativeSessionSummarySchema.nullable(),
+});
+
+export const NarrativeActionResponseSchema = z.object({
+  success: z.literal(true),
+  room: NarrativeRoomSchema,
+  state: NarrativeSessionStateSchema.nullable(),
+  revealedRoles: z.array(NarrativeRoleAssignmentSchema).optional(),
+  sessionSummary: NarrativeSessionSummarySchema.nullable().optional(),
+});
+
+export const SendNarrativeMessageRequestSchema = z.object({
+  maskId: z.string().uuid(),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH).min(1),
+});
+
+export const SendNarrativeMessageResponseSchema = z.object({
+  message: NarrativeMessageSchema,
+});
+
+export const DevGrantEntitlementRequestSchema = z.object({
+  userId: z.string().uuid(),
+  kind: EntitlementKindSchema,
+  expiresAt: z.string().datetime().nullable().optional(),
+});
+
+export const DevGrantEntitlementResponseSchema = z.object({
+  entitlement: EntitlementSchema,
+});
+
+export const UpdateRtcSettingsRequestSchema = z
+  .object({
+    advancedNoiseSuppression: z.boolean().optional(),
+    pushToTalkMode: PushToTalkModeSchema.optional(),
+    pushToTalkHotkey: z.string().min(1).max(MAX_PUSH_TO_TALK_HOTKEY_LENGTH).optional(),
+    multiPinEnabled: z.boolean().optional(),
+    pictureInPictureEnabled: z.boolean().optional(),
+    defaultScreenshareFps: z.union([z.literal(30), z.literal(60)]).optional(),
+    defaultScreenshareQuality: ScreenshareQualitySchema.optional(),
+    cursorHighlight: z.boolean().optional(),
+    selectedAuraStyle: z.string().min(1).max(MAX_COSMETIC_UNLOCK_KEY_LENGTH).optional(),
+  })
+  .refine(
+    (value) =>
+      value.advancedNoiseSuppression !== undefined ||
+      value.pushToTalkMode !== undefined ||
+      value.pushToTalkHotkey !== undefined ||
+      value.multiPinEnabled !== undefined ||
+      value.pictureInPictureEnabled !== undefined ||
+      value.defaultScreenshareFps !== undefined ||
+      value.defaultScreenshareQuality !== undefined ||
+      value.cursorHighlight !== undefined ||
+      value.selectedAuraStyle !== undefined,
+    {
+      message: 'Provide at least one field',
+      path: ['advancedNoiseSuppression'],
+    },
+  );
+
+export const UpdateRtcSettingsResponseSchema = z.object({
+  success: z.literal(true),
+  rtcSettings: UserRtcSettingsSchema,
+});
+
+export const StripeWebhookResponseSchema = z.object({
+  received: z.literal(true),
 });
 
 export const ListRoomsQuerySchema = z.object({
@@ -557,12 +949,22 @@ export const SetMaskAvatarResponseSchema = z.object({
   mask: MaskSchema,
 });
 
+export const SocketAuraSummarySchema = z.object({
+  score: z.number().int().min(0),
+  effectiveScore: z.number().int().min(0),
+  tier: AuraTierSchema,
+  color: z.string().min(1).max(32),
+  nextTierAt: z.number().int().min(0).nullable(),
+  lastActivityAt: z.string().datetime(),
+});
+
 export const SocketMaskIdentitySchema = z.object({
   maskId: z.string().uuid(),
   displayName: z.string().min(1).max(40),
   avatarSeed: z.string().min(1).max(80),
   color: z.string().min(1).max(32),
   avatarUploadId: z.string().uuid().nullable().optional(),
+  aura: SocketAuraSummarySchema.optional(),
 });
 
 export const RoomMemberStateSchema = SocketMaskIdentitySchema.extend({
@@ -680,6 +1082,8 @@ export const CreateRtcSessionResponseSchema = z.object({
   livekitRoomName: z.string().min(1),
   token: z.string().min(1),
   livekitUrl: z.string().url(),
+  participantCap: z.number().int().min(1).optional(),
+  canScreenshare: z.boolean().optional(),
   participants: z.array(VoiceParticipantSchema),
 });
 
@@ -753,6 +1157,21 @@ export const SendChannelMessageSocketPayloadSchema = z.object({
   path: ['body'],
 });
 
+export const JoinNarrativeRoomSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  maskId: z.string().uuid(),
+});
+
+export const LeaveNarrativeRoomSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+});
+
+export const SendNarrativeMessageSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  maskId: z.string().uuid(),
+  body: z.string().max(MAX_ROOM_MESSAGE_LENGTH),
+});
+
 export const ClientSocketEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('JOIN_ROOM'),
@@ -777,6 +1196,18 @@ export const ClientSocketEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('SEND_CHANNEL_MESSAGE'),
     data: SendChannelMessageSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('JOIN_NARRATIVE_ROOM'),
+    data: JoinNarrativeRoomSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('LEAVE_NARRATIVE_ROOM'),
+    data: LeaveNarrativeRoomSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('SEND_NARRATIVE_MESSAGE'),
+    data: SendNarrativeMessageSocketPayloadSchema,
   }),
 ]);
 
@@ -863,6 +1294,47 @@ export const SocketErrorPayloadSchema = z.object({
   message: z.string().min(1),
 });
 
+export const AuraUpdatedSocketPayloadSchema = z.object({
+  maskId: z.string().uuid(),
+  aura: SocketAuraSummarySchema,
+});
+
+export const NarrativeRoomStateSocketPayloadSchema = NarrativeRoomStateSchema;
+
+export const NarrativePhaseChangedSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  phaseIndex: z.number().int().min(0),
+  phase: NarrativePhaseSchema,
+  phaseEndsAt: z.string().datetime().nullable(),
+});
+
+export const NarrativeMemberJoinedSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  member: NarrativeRoomMemberStateSchema,
+});
+
+export const NarrativeMemberLeftSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  maskId: z.string().uuid(),
+});
+
+export const NarrativeSessionEndedSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  endedAt: z.string().datetime(),
+});
+
+export const NarrativeRoleAssignedSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  roleKey: z.string().min(1).max(40),
+  role: NarrativeRoleDefinitionSchema,
+  secretPayload: z.unknown().nullable().optional(),
+});
+
+export const NarrativeNewMessageSocketPayloadSchema = z.object({
+  roomId: z.string().uuid(),
+  message: NarrativeMessageSchema,
+});
+
 export const ServerSocketEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ROOM_STATE'),
@@ -905,6 +1377,38 @@ export const ServerSocketEventSchema = z.discriminatedUnion('type', [
     data: ModerationEventSocketPayloadSchema,
   }),
   z.object({
+    type: z.literal('AURA_UPDATED'),
+    data: AuraUpdatedSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('NARRATIVE_ROOM_STATE'),
+    data: NarrativeRoomStateSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('NARRATIVE_PHASE_CHANGED'),
+    data: NarrativePhaseChangedSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('NARRATIVE_MEMBER_JOINED'),
+    data: NarrativeMemberJoinedSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('NARRATIVE_MEMBER_LEFT'),
+    data: NarrativeMemberLeftSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('NARRATIVE_SESSION_ENDED'),
+    data: NarrativeSessionEndedSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('NARRATIVE_ROLE_ASSIGNED'),
+    data: NarrativeRoleAssignedSocketPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('NARRATIVE_NEW_MESSAGE'),
+    data: NarrativeNewMessageSocketPayloadSchema,
+  }),
+  z.object({
     type: z.literal('ERROR'),
     data: SocketErrorPayloadSchema,
   }),
@@ -920,6 +1424,12 @@ export const HealthResponseSchema = z.object({
 export type User = z.infer<typeof UserSchema>;
 export type RegisterRequest = z.infer<typeof RegisterRequestSchema>;
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
+export type AuraSummary = z.infer<typeof AuraSummarySchema>;
+export type AuraEvent = z.infer<typeof AuraEventSchema>;
+export type Entitlement = z.infer<typeof EntitlementSchema>;
+export type CosmeticUnlock = z.infer<typeof CosmeticUnlockSchema>;
+export type UserRtcSettings = z.infer<typeof UserRtcSettingsSchema>;
+export type FeatureAccess = z.infer<typeof FeatureAccessSchema>;
 export type Mask = z.infer<typeof MaskSchema>;
 export type Room = z.infer<typeof RoomSchema>;
 export type RoomMembership = z.infer<typeof RoomMembershipSchema>;
@@ -952,7 +1462,10 @@ export type CreateServerRequest = z.infer<typeof CreateServerRequestSchema>;
 export type CreateServerResponse = z.infer<typeof CreateServerResponseSchema>;
 export type ListServersResponse = z.infer<typeof ListServersResponseSchema>;
 export type ServerParams = z.infer<typeof ServerParamsSchema>;
+export type ServerRtcPolicy = z.infer<typeof ServerRtcPolicySchema>;
 export type GetServerResponse = z.infer<typeof GetServerResponseSchema>;
+export type UpdateServerRtcPolicyRequest = z.infer<typeof UpdateServerRtcPolicyRequestSchema>;
+export type UpdateServerRtcPolicyResponse = z.infer<typeof UpdateServerRtcPolicyResponseSchema>;
 export type ServerRoleParams = z.infer<typeof ServerRoleParamsSchema>;
 export type CreateServerRoleRequest = z.infer<typeof CreateServerRoleRequestSchema>;
 export type UpdateServerRoleRequest = z.infer<typeof UpdateServerRoleRequestSchema>;
@@ -983,6 +1496,39 @@ export type SetMaskAvatarParams = z.infer<typeof SetMaskAvatarParamsSchema>;
 export type SetMaskAvatarResponse = z.infer<typeof SetMaskAvatarResponseSchema>;
 export type DeleteMaskParams = z.infer<typeof DeleteMaskParamsSchema>;
 export type DeleteMaskResponse = z.infer<typeof DeleteMaskResponseSchema>;
+export type MaskAuraParams = z.infer<typeof MaskAuraParamsSchema>;
+export type GetMaskAuraResponse = z.infer<typeof GetMaskAuraResponseSchema>;
+export type NarrativePhase = z.infer<typeof NarrativePhaseSchema>;
+export type NarrativeRoleDefinition = z.infer<typeof NarrativeRoleDefinitionSchema>;
+export type NarrativeTemplate = z.infer<typeof NarrativeTemplateSchema>;
+export type NarrativeRoom = z.infer<typeof NarrativeRoomSchema>;
+export type NarrativeMembership = z.infer<typeof NarrativeMembershipSchema>;
+export type NarrativeSessionState = z.infer<typeof NarrativeSessionStateSchema>;
+export type NarrativeRoleAssignment = z.infer<typeof NarrativeRoleAssignmentSchema>;
+export type NarrativeMessage = z.infer<typeof NarrativeMessageSchema>;
+export type NarrativeRoomMemberState = z.infer<typeof NarrativeRoomMemberStateSchema>;
+export type NarrativeRoomState = z.infer<typeof NarrativeRoomStateSchema>;
+export type NarrativeSessionSummary = z.infer<typeof NarrativeSessionSummarySchema>;
+export type NarrativeRoomParams = z.infer<typeof NarrativeRoomParamsSchema>;
+export type ListNarrativeTemplatesResponse = z.infer<typeof ListNarrativeTemplatesResponseSchema>;
+export type CreateNarrativeRoomRequest = z.infer<typeof CreateNarrativeRoomRequestSchema>;
+export type CreateNarrativeRoomResponse = z.infer<typeof CreateNarrativeRoomResponseSchema>;
+export type JoinNarrativeRoomRequest = z.infer<typeof JoinNarrativeRoomRequestSchema>;
+export type JoinNarrativeRoomResponse = z.infer<typeof JoinNarrativeRoomResponseSchema>;
+export type LeaveNarrativeRoomRequest = z.infer<typeof LeaveNarrativeRoomRequestSchema>;
+export type LeaveNarrativeRoomResponse = z.infer<typeof LeaveNarrativeRoomResponseSchema>;
+export type SetNarrativeReadyRequest = z.infer<typeof SetNarrativeReadyRequestSchema>;
+export type SetNarrativeReadyResponse = z.infer<typeof SetNarrativeReadyResponseSchema>;
+export type NarrativeActorRequest = z.infer<typeof NarrativeActorRequestSchema>;
+export type GetNarrativeRoomResponse = z.infer<typeof GetNarrativeRoomResponseSchema>;
+export type NarrativeActionResponse = z.infer<typeof NarrativeActionResponseSchema>;
+export type SendNarrativeMessageRequest = z.infer<typeof SendNarrativeMessageRequestSchema>;
+export type SendNarrativeMessageResponse = z.infer<typeof SendNarrativeMessageResponseSchema>;
+export type DevGrantEntitlementRequest = z.infer<typeof DevGrantEntitlementRequestSchema>;
+export type DevGrantEntitlementResponse = z.infer<typeof DevGrantEntitlementResponseSchema>;
+export type UpdateRtcSettingsRequest = z.infer<typeof UpdateRtcSettingsRequestSchema>;
+export type UpdateRtcSettingsResponse = z.infer<typeof UpdateRtcSettingsResponseSchema>;
+export type StripeWebhookResponse = z.infer<typeof StripeWebhookResponseSchema>;
 export type ListRoomsQuery = z.infer<typeof ListRoomsQuerySchema>;
 export type RoomListItem = z.infer<typeof RoomListItemSchema>;
 export type ListRoomsResponse = z.infer<typeof ListRoomsResponseSchema>;
@@ -1002,6 +1548,7 @@ export type UploadImageRequest = z.infer<typeof UploadImageRequestSchema>;
 export type UploadedImage = z.infer<typeof UploadedImageSchema>;
 export type UploadImageResponse = z.infer<typeof UploadImageResponseSchema>;
 export type UploadParams = z.infer<typeof UploadParamsSchema>;
+export type SocketAuraSummary = z.infer<typeof SocketAuraSummarySchema>;
 export type SocketMaskIdentity = z.infer<typeof SocketMaskIdentitySchema>;
 export type RoomMemberState = z.infer<typeof RoomMemberStateSchema>;
 export type RoomMessage = z.infer<typeof RoomMessageSchema>;
@@ -1031,6 +1578,9 @@ export type JoinDmSocketPayload = z.infer<typeof JoinDmSocketPayloadSchema>;
 export type SendDmSocketPayload = z.infer<typeof SendDmSocketPayloadSchema>;
 export type JoinChannelSocketPayload = z.infer<typeof JoinChannelSocketPayloadSchema>;
 export type SendChannelMessageSocketPayload = z.infer<typeof SendChannelMessageSocketPayloadSchema>;
+export type JoinNarrativeRoomSocketPayload = z.infer<typeof JoinNarrativeRoomSocketPayloadSchema>;
+export type LeaveNarrativeRoomSocketPayload = z.infer<typeof LeaveNarrativeRoomSocketPayloadSchema>;
+export type SendNarrativeMessageSocketPayload = z.infer<typeof SendNarrativeMessageSocketPayloadSchema>;
 export type ClientSocketEvent = z.infer<typeof ClientSocketEventSchema>;
 export type RoomStateSocketPayload = z.infer<typeof RoomStateSocketPayloadSchema>;
 export type NewMessageSocketPayload = z.infer<typeof NewMessageSocketPayloadSchema>;
@@ -1046,6 +1596,14 @@ export type NewChannelMessageSocketPayload = z.infer<typeof NewChannelMessageSoc
 export type DmStateSocketPayload = z.infer<typeof DmStateSocketPayloadSchema>;
 export type NewDmMessageSocketPayload = z.infer<typeof NewDmMessageSocketPayloadSchema>;
 export type ModerationEventSocketPayload = z.infer<typeof ModerationEventSocketPayloadSchema>;
+export type AuraUpdatedSocketPayload = z.infer<typeof AuraUpdatedSocketPayloadSchema>;
+export type NarrativeRoomStateSocketPayload = z.infer<typeof NarrativeRoomStateSocketPayloadSchema>;
+export type NarrativePhaseChangedSocketPayload = z.infer<typeof NarrativePhaseChangedSocketPayloadSchema>;
+export type NarrativeMemberJoinedSocketPayload = z.infer<typeof NarrativeMemberJoinedSocketPayloadSchema>;
+export type NarrativeMemberLeftSocketPayload = z.infer<typeof NarrativeMemberLeftSocketPayloadSchema>;
+export type NarrativeSessionEndedSocketPayload = z.infer<typeof NarrativeSessionEndedSocketPayloadSchema>;
+export type NarrativeRoleAssignedSocketPayload = z.infer<typeof NarrativeRoleAssignedSocketPayloadSchema>;
+export type NarrativeNewMessageSocketPayload = z.infer<typeof NarrativeNewMessageSocketPayloadSchema>;
 export type SocketErrorPayload = z.infer<typeof SocketErrorPayloadSchema>;
 export type ServerSocketEvent = z.infer<typeof ServerSocketEventSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;

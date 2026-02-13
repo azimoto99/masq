@@ -1,6 +1,11 @@
 ﻿# Masq Monorepo
 
-Masq is a mask-based social platform MVP with a Fastify API and React web client.
+Masq is a mask-based social platform with a Fastify API and React web client.
+
+1.0 scaffolding includes:
+- Aura: per-mask presence progression (non-karma, no negative score)
+- Narrative Rooms: template-based sessions with timed phases and private role assignment
+- Masq Pro scaffolding: user entitlements, owner server perks, and dev/manual grants (privacy-first, no call recording)
 
 ## Stack
 - API: Fastify + WebSocket, Prisma (Postgres), ioredis (Redis)
@@ -51,7 +56,20 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `GET /me`
 - `POST /masks` `{ displayName, color?, avatarSeed? }`
 - `POST /masks/:maskId/avatar` `multipart/form-data` (`file`)
+- `GET /masks/:maskId/aura`
 - `DELETE /masks/:maskId`
+- `GET /narrative/templates`
+- `POST /narrative/rooms` `{ templateId, hostMaskId }`
+- `POST /narrative/rooms/join` `{ code, maskId }`
+- `POST /narrative/rooms/:roomId/leave` `{ maskId }`
+- `POST /narrative/rooms/:roomId/start` `{ actorMaskId }`
+- `POST /narrative/rooms/:roomId/advance` `{ actorMaskId }`
+- `GET /narrative/rooms/:roomId`
+- `POST /narrative/rooms/:roomId/message` `{ maskId, body }`
+- `POST /dev/entitlements/grant` `{ userId, kind, expiresAt? }` (only when `ENABLE_DEV_ENTITLEMENTS=true`)
+- `PATCH /settings/rtc` `{ advancedNoiseSuppression?, pushToTalkMode?, ... }`
+- `PATCH /servers/:serverId/rtc-policy` `{ stageModeEnabled?, screenshareMinimumRole? }`
+- `POST /billing/stripe/webhook` (disabled unless `ENABLE_STRIPE_WEBHOOK=true`)
 - `POST /uploads/image` `multipart/form-data` (`contextType`, `contextId`, `file`)
 - `GET /uploads/:uploadId` (auth-protected private media)
 - `POST /dm/start` `{ friendUserId, initialMaskId }`
@@ -101,6 +119,8 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `/dm` + `/dm/:threadId`: DM list and realtime DM chat
 - `/servers` + `/servers/:serverId/:channelId`: server list, invites, roles, and realtime channel chat
 - `/rooms` + `/rooms/:roomId`: create/join room and realtime chat by mask
+- `/narrative` + `/narrative/:roomId`: create/join narrative sessions, phase tracking, role card, session chat
+- `/perks`: entitlement and cosmetic unlock visibility
 
 ## Realtime Events
 - `JOIN_ROOM { roomId, maskId }`
@@ -122,10 +142,44 @@ Masq is a mask-based social platform MVP with a Fastify API and React web client
 - `SEND_CHANNEL_MESSAGE { channelId, body?, imageUploadId? }`
 - `CHANNEL_STATE { channel, members, recentMessages }`
 - `NEW_CHANNEL_MESSAGE { message }`
+- `AURA_UPDATED { maskId, aura }`
+- `JOIN_NARRATIVE_ROOM { roomId, maskId }`
+- `LEAVE_NARRATIVE_ROOM { roomId }`
+- `SEND_NARRATIVE_MESSAGE { roomId, maskId, body }`
+- `NARRATIVE_ROOM_STATE { room, template, members, state }`
+- `NARRATIVE_PHASE_CHANGED { roomId, phaseIndex, phase, phaseEndsAt }`
+- `NARRATIVE_MEMBER_JOINED { roomId, member }`
+- `NARRATIVE_MEMBER_LEFT { roomId, maskId }`
+- `NARRATIVE_ROLE_ASSIGNED { roomId, roleKey, role, secretPayload }`
+- `NARRATIVE_NEW_MESSAGE { roomId, message }`
+- `NARRATIVE_SESSION_ENDED { roomId, endedAt }`
 - Message body limit is `1000` characters (validated + sanitized server-side)
+
+## Aura (Per Mask)
+- Aura is a presence signal, not karma.
+- Aura never subtracts from lifetime stored score.
+- Tier/color use an effective score that decays after inactivity.
+- No permissions, moderation powers, or access checks use aura.
+- No global leaderboards are included.
+
+## Narrative Rooms
+- Structured sessions built from templates (phases + role definitions).
+- Host starts from lobby, roles assign privately, phases auto-advance by timer.
+- Host can manually advance phases.
+- Session status transitions: `LOBBY -> RUNNING -> ENDED`.
+
+## Monetization Skeleton
+- Plans: `FREE` and `PRO`.
+- `Entitlement` and `CosmeticUnlock` models are wired.
+- `GET /me` includes plan, entitlements, cosmetic unlocks, RTC settings, and feature access flags.
+- User-level PRO gates privacy-safe RTC controls and premium aura styles (visual only).
+- Owner PRO perks activate server-level RTC upgrades (`participantCap`, stage mode flag, screenshare policy controls).
+- Narrative templates can carry `requiresEntitlement` metadata for UI gating.
+- Stripe webhook verification endpoint is scaffolded behind env flags; checkout flow is intentionally not live yet.
 
 ## RTC (LiveKit)
 - API remains signaling/auth/control; LiveKit carries WebRTC media.
+- Privacy stance: call recording is not supported (`recordingAllowed=false` in server RTC policy).
 - Join auth is context-scoped and mask-scoped:
   - `SERVER_CHANNEL`: server member + active channel identity mask
   - `DM_THREAD`: DM participant + friendship check
@@ -185,6 +239,13 @@ LIVEKIT_API_SECRET=
 # If unset on Render, API defaults to /var/data/masq-uploads.
 UPLOADS_DIR=./uploads
 MAX_IMAGE_UPLOAD_BYTES=10485760
+
+# Dev-only entitlement grants
+ENABLE_DEV_ENTITLEMENTS=false
+
+# Stripe webhook scaffold (optional)
+ENABLE_STRIPE_WEBHOOK=false
+STRIPE_WEBHOOK_SECRET=
 ```
 
 ## Deployment Notes

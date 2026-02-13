@@ -21,6 +21,8 @@ interface ParticipantMetadata {
   displayName: string;
   color: string;
   avatarSeed: string;
+  auraTier?: 'DORMANT' | 'PRESENT' | 'RESONANT' | 'RADIANT' | 'ASCENDANT';
+  auraColor?: string;
   contextType: RtcContextType;
   contextId: string;
 }
@@ -37,6 +39,8 @@ const ParticipantMetadataSchema = z.object({
   displayName: z.string().min(1).max(40),
   color: z.string().min(1).max(32),
   avatarSeed: z.string().min(1).max(80),
+  auraTier: z.enum(['DORMANT', 'PRESENT', 'RESONANT', 'RADIANT', 'ASCENDANT']).optional(),
+  auraColor: z.string().min(1).max(32).optional(),
   contextType: z.enum(['SERVER_CHANNEL', 'DM_THREAD', 'EPHEMERAL_ROOM']),
   contextId: z.string().uuid(),
 });
@@ -276,6 +280,8 @@ export function useRtcSession({
               displayName: metadata.displayName,
               color: metadata.color,
               avatarSeed: metadata.avatarSeed,
+              auraTier: metadata.auraTier,
+              auraColor: metadata.auraColor,
             }
           : null,
         audioTrack: findTrackBySource(participant, Track.Source.Microphone),

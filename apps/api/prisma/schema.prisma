@@ -62,6 +62,39 @@ enum UploadContextType {
   EPHEMERAL_ROOM
 }
 
+enum AuraTier {
+  DORMANT
+  PRESENT
+  RESONANT
+  RADIANT
+  ASCENDANT
+}
+
+enum AuraEventKind {
+  MESSAGE_SENT
+  REACTION_RECEIVED
+  MENTIONED
+  VOICE_MINUTES
+  SESSION_HOSTED
+  SESSION_JOINED
+}
+
+enum NarrativeRoomStatus {
+  LOBBY
+  RUNNING
+  ENDED
+}
+
+enum EntitlementKind {
+  FREE
+  PRO
+}
+
+enum EntitlementSource {
+  STRIPE
+  DEV_MANUAL
+}
+
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique
@@ -85,6 +118,9 @@ model User {
   channelMemberIdentities ChannelMemberIdentity[]
   voiceParticipants      VoiceParticipant[]
   ownedUploads           Upload[]
+  entitlements           Entitlement[]
+  cosmeticUnlocks        CosmeticUnlock[]
+  rtcSettings            UserRtcSettings?
 }
 
 model Mask {
@@ -109,6 +145,129 @@ model Mask {
   channelMemberIdentities ChannelMemberIdentity[]
   voiceParticipants  VoiceParticipant[]
   avatarUpload       Upload?           @relation("MaskAvatarUpload", fields: [avatarUploadId], references: [id], onDelete: SetNull)
+  aura               MaskAura?
+  auraEvents         AuraEvent[]
+  hostedNarrativeRooms NarrativeRoom[]       @relation("NarrativeRoomHost")
+  narrativeMemberships NarrativeMembership[]
+  narrativeRoleAssignments NarrativeRoleAssignment[]
+  narrativeMessages  NarrativeMessage[]
+}
+
+model MaskAura {
+  id             String   @id @default(uuid()) @db.Uuid
+  maskId         String   @unique @db.Uuid
+  score          Int      @default(0)
+  tier           AuraTier @default(DORMANT)
+  color          String   @default("Gray")
+  lastActivityAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  mask Mask @relation(fields: [maskId], references: [id], onDelete: Cascade)
+}
+
+model AuraEvent {
+  id        String        @id @default(uuid()) @db.Uuid
+  maskId    String        @db.Uuid
+  kind      AuraEventKind
+  weight    Int
+  meta      Json?
+  createdAt DateTime      @default(now())
+
+  mask Mask @relation(fields: [maskId], references: [id], onDelete: Cascade)
+
+  @@index([maskId, kind, createdAt])
+  @@index([maskId, createdAt])
+}
+
+model NarrativeTemplate {
+  id                  String           @id @default(uuid()) @db.Uuid
+  slug                String           @unique
+  name                String
+  description         String
+  minPlayers          Int
+  maxPlayers          Int
+  phases              Json
+  roles               Json
+  requiresEntitlement EntitlementKind?
+  createdAt           DateTime         @default(now())
+
+  rooms NarrativeRoom[]
+}
+
+model NarrativeRoom {
+  id         String              @id @default(uuid()) @db.Uuid
+  templateId String              @db.Uuid
+  code       String              @unique
+  hostMaskId String              @db.Uuid
+  seed       Int                 @default(0)
+  status     NarrativeRoomStatus @default(LOBBY)
+  createdAt  DateTime            @default(now())
+  endedAt    DateTime?
+
+  template        NarrativeTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  hostMask        Mask                    @relation("NarrativeRoomHost", fields: [hostMaskId], references: [id], onDelete: Restrict)
+  memberships     NarrativeMembership[]
+  sessionState    NarrativeSessionState?
+  roleAssignments NarrativeRoleAssignment[]
+  messages        NarrativeMessage[]
+
+  @@index([status, createdAt])
+  @@index([hostMaskId, createdAt])
+}
+
+model NarrativeMembership {
+  id       String   @id @default(uuid()) @db.Uuid
+  roomId   String   @db.Uuid
+  maskId   String   @db.Uuid
+  isReady  Boolean  @default(false)
+  joinedAt DateTime @default(now())
+  leftAt   DateTime?
+
+  room NarrativeRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  mask Mask          @relation(fields: [maskId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, maskId])
+  @@index([roomId, joinedAt])
+  @@index([maskId, joinedAt])
+}
+
+model NarrativeSessionState {
+  roomId      String   @id @db.Uuid
+  phaseIndex  Int
+  phaseEndsAt DateTime?
+  startedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  room NarrativeRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model NarrativeRoleAssignment {
+  id            String   @id @default(uuid()) @db.Uuid
+  roomId        String   @db.Uuid
+  maskId        String   @db.Uuid
+  roleKey       String
+  secretPayload Json?
+  createdAt     DateTime @default(now())
+
+  room NarrativeRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  mask Mask          @relation(fields: [maskId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, maskId])
+  @@index([roomId, roleKey])
+}
+
+model NarrativeMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String   @db.Uuid
+  maskId    String   @db.Uuid
+  body      String
+  createdAt DateTime @default(now())
+
+  room NarrativeRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  mask Mask          @relation(fields: [maskId], references: [id], onDelete: Restrict)
+
+  @@index([roomId, createdAt])
 }
 
 model Room {
@@ -202,6 +361,8 @@ model Server {
   name        String
   ownerUserId String   @db.Uuid
   channelIdentityMode ChannelIdentityMode @default(SERVER_MASK)
+  stageModeEnabled Boolean @default(false)
+  screenshareMinimumRole ServerMembershipRole @default(MEMBER)
   createdAt   DateTime @default(now())
 
   owner    User           @relation("ServerOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
@@ -379,6 +540,48 @@ model Upload {
 
   @@index([ownerUserId, createdAt])
   @@index([contextType, contextId, createdAt])
+}
+
+model Entitlement {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String            @db.Uuid
+  kind      EntitlementKind
+  source    EntitlementSource
+  expiresAt DateTime?
+  createdAt DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, expiresAt])
+}
+
+model CosmeticUnlock {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  key        String
+  unlockedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, unlockedAt])
+}
+
+model UserRtcSettings {
+  userId                     String   @id @db.Uuid
+  advancedNoiseSuppression   Boolean  @default(false)
+  pushToTalkMode             String   @default("HOLD")
+  pushToTalkHotkey           String   @default("V")
+  multiPinEnabled            Boolean  @default(false)
+  pictureInPictureEnabled    Boolean  @default(false)
+  defaultScreenshareFps      Int      @default(30)
+  defaultScreenshareQuality  String   @default("balanced")
+  cursorHighlight            Boolean  @default(true)
+  selectedAuraStyle          String   @default("AURA_STYLE_BASE")
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VoiceSession {

@@ -5,8 +5,10 @@ import {
   CreateServerChannelResponseSchema,
   CreateServerInviteResponseSchema,
   CreateServerResponseSchema,
+  ClientSocketEventSchema,
   FriendRequestsResponseSchema,
   FriendsListResponseSchema,
+  GetMaskAuraResponseSchema,
   ListServerRolesResponseSchema,
   CreateMaskResponseSchema,
   CreateRoomResponseSchema,
@@ -21,14 +23,18 @@ import {
   ListServersResponseSchema,
   MeResponseSchema,
   ModerateRoomResponseSchema,
+  ServerSocketEventSchema,
   type RtcContextType,
   type ServerPermission,
 } from '@masq/shared';
+import WebSocket, { type RawData } from 'ws';
 import { buildApp } from '../src/app.js';
 import type {
   AddRoomMembershipInput,
   AddServerMemberInput,
+  AuraEventRecord,
   CreateChannelInput,
+  CreateAuraEventInput,
   CreateDmMessageInput,
   CreateMaskInput,
   CreateMessageInput,
@@ -36,6 +42,7 @@ import type {
   CreateServerInput,
   CreateServerInviteInput,
   CreateServerMessageInput,
+  CreateEntitlementInput,
   CreateUploadInput,
   CreateVoiceParticipantInput,
   CreateVoiceSessionInput,
@@ -52,10 +59,13 @@ import type {
   DmMessageRecord,
   DmParticipantRecord,
   DmThreadRecord,
+  EntitlementRecord,
+  CosmeticUnlockRecord,
   FriendRequestRecord,
   FriendUserRecord,
   IncomingFriendRequestRecord,
   MaskRecord,
+  MaskAuraRecord,
   MasqRepository,
   MessageRecord,
   OutgoingFriendRequestRecord,
@@ -67,6 +77,7 @@ import type {
   UpsertDmParticipantInput,
   UpsertFriendRequestInput,
   UserRecord,
+  UserRtcSettingsRecord,
   VoiceParticipantRecord,
   VoiceSessionRecord,
 } from '../src/domain/repository.js';
@@ -114,6 +125,11 @@ class InMemoryRepository implements MasqRepository {
   private uploadsById = new Map<string, UploadRecord>();
   private voiceSessionsById = new Map<string, VoiceSessionRecord>();
   private voiceParticipantsById = new Map<string, VoiceParticipantRecord>();
+  private auraByMaskId = new Map<string, MaskAuraRecord>();
+  private auraEventsByMaskId = new Map<string, AuraEventRecord[]>();
+  private entitlementsByUser = new Map<string, EntitlementRecord[]>();
+  private cosmeticUnlocksByUser = new Map<string, CosmeticUnlockRecord[]>();
+  private rtcSettingsByUser = new Map<string, UserRtcSettingsRecord>();
 
   private compositeKey(roomId: string, maskId: string) {
     return `${roomId}:${maskId}`;
@@ -275,6 +291,8 @@ class InMemoryRepository implements MasqRepository {
       name: input.name,
       ownerUserId: input.ownerUserId,
       channelIdentityMode: 'SERVER_MASK',
+      stageModeEnabled: false,
+      screenshareMinimumRole: 'MEMBER',
       createdAt: new Date(),
     };
 
@@ -1428,6 +1446,144 @@ class InMemoryRepository implements MasqRepository {
     return count;
   }
 
+  async findMaskAuraByMaskId(maskId: string) {
+    return this.auraByMaskId.get(maskId) ?? null;
+  }
+
+  async upsertMaskAura(maskId: string) {
+    const existing = this.auraByMaskId.get(maskId);
+    if (existing) {
+      return existing;
+    }
+
+    const now = new Date();
+    const aura: MaskAuraRecord = {
+      id: randomUUID(),
+      maskId,
+      score: 0,
+      tier: 'DORMANT',
+      color: 'Gray',
+      lastActivityAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.auraByMaskId.set(maskId, aura);
+    return aura;
+  }
+
+  async updateMaskAura(
+    maskId: string,
+    updates: {
+      score?: number;
+      tier?: MaskAuraRecord['tier'];
+      color?: string;
+      lastActivityAt?: Date;
+    },
+  ) {
+    const current = this.auraByMaskId.get(maskId) ?? (await this.upsertMaskAura(maskId));
+    const next: MaskAuraRecord = {
+      ...current,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.auraByMaskId.set(maskId, next);
+    return next;
+  }
+
+  async listAuraEventsByMask(maskId: string, options?: { limit?: number; kind?: CreateAuraEventInput['kind']; since?: Date }) {
+    const events = [...(this.auraEventsByMaskId.get(maskId) ?? [])];
+    const filtered = events
+      .filter((event) => (options?.kind ? event.kind === options.kind : true))
+      .filter((event) => (options?.since ? event.createdAt.getTime() >= options.since.getTime() : true))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    if (options?.limit !== undefined) {
+      return filtered.slice(0, options.limit);
+    }
+    return filtered;
+  }
+
+  async countAuraEventsByMaskKindSince(maskId: string, kind: CreateAuraEventInput['kind'], since: Date) {
+    const events = this.auraEventsByMaskId.get(maskId) ?? [];
+    return events.filter((event) => event.kind === kind && event.createdAt.getTime() >= since.getTime()).length;
+  }
+
+  async createAuraEvent(input: CreateAuraEventInput) {
+    const event: AuraEventRecord = {
+      id: randomUUID(),
+      maskId: input.maskId,
+      kind: input.kind,
+      weight: input.weight,
+      meta: input.meta ?? null,
+      createdAt: new Date(),
+    };
+    const current = this.auraEventsByMaskId.get(input.maskId) ?? [];
+    current.push(event);
+    this.auraEventsByMaskId.set(input.maskId, current);
+    return event;
+  }
+
+  async listEntitlementsByUser(userId: string) {
+    return [...(this.entitlementsByUser.get(userId) ?? [])].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+  }
+
+  async createEntitlement(input: CreateEntitlementInput) {
+    const entitlement: EntitlementRecord = {
+      id: randomUUID(),
+      userId: input.userId,
+      kind: input.kind,
+      source: input.source,
+      expiresAt: input.expiresAt,
+      createdAt: new Date(),
+    };
+
+    const current = this.entitlementsByUser.get(input.userId) ?? [];
+    current.push(entitlement);
+    this.entitlementsByUser.set(input.userId, current);
+    return entitlement;
+  }
+
+  async listCosmeticUnlocksByUser(userId: string) {
+    return [...(this.cosmeticUnlocksByUser.get(userId) ?? [])].sort(
+      (a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime(),
+    );
+  }
+
+  async findUserRtcSettings(userId: string) {
+    return this.rtcSettingsByUser.get(userId) ?? null;
+  }
+
+  async upsertUserRtcSettings(userId: string, updates: Partial<Omit<UserRtcSettingsRecord, 'userId' | 'createdAt' | 'updatedAt'>>) {
+    const now = new Date();
+    const existing = this.rtcSettingsByUser.get(userId);
+    const base: UserRtcSettingsRecord =
+      existing ?? {
+        userId,
+        advancedNoiseSuppression: false,
+        pushToTalkMode: 'HOLD',
+        pushToTalkHotkey: 'V',
+        multiPinEnabled: false,
+        pictureInPictureEnabled: false,
+        defaultScreenshareFps: 30,
+        defaultScreenshareQuality: 'balanced',
+        cursorHighlight: true,
+        selectedAuraStyle: 'AURA_STYLE_BASE',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+    const next: UserRtcSettingsRecord = {
+      ...base,
+      ...updates,
+      updatedAt: now,
+    };
+
+    this.rtcSettingsByUser.set(userId, next);
+    return next;
+  }
+
   setMaskActive(maskId: string, active: boolean) {
     if (active) {
       const room: RoomRecord = {
@@ -2217,6 +2373,280 @@ describe('auth and mask flows', () => {
       },
     });
     expect(wrongMaskResponse.statusCode).toBe(403);
+  });
+
+  it('enables PRO user features in /me when active entitlement exists', async () => {
+    const cookie = await registerUser(app, 'pro-feature-access@example.com');
+    await createMask(app, cookie, 'Pro Feature Mask');
+
+    const meBeforeResponse = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { cookie },
+    });
+    expect(meBeforeResponse.statusCode).toBe(200);
+    const meBefore = MeResponseSchema.parse(meBeforeResponse.json());
+    expect(meBefore.currentPlan).toBe('FREE');
+    expect(
+      meBefore.featureAccess.find((entry) => entry.feature === 'PRO_ADVANCED_LAYOUT')?.enabled ?? false,
+    ).toBe(false);
+
+    await repository.createEntitlement({
+      userId: meBefore.user.id,
+      kind: 'PRO',
+      source: 'DEV_MANUAL',
+      expiresAt: null,
+    });
+
+    const meAfterResponse = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { cookie },
+    });
+    expect(meAfterResponse.statusCode).toBe(200);
+    const meAfter = MeResponseSchema.parse(meAfterResponse.json());
+    expect(meAfter.currentPlan).toBe('PRO');
+    expect(
+      meAfter.featureAccess.find((entry) => entry.feature === 'PRO_ADVANCED_LAYOUT')?.enabled ?? false,
+    ).toBe(true);
+    expect(
+      meAfter.featureAccess.find((entry) => entry.feature === 'PRO_AURA_STYLES')?.enabled ?? false,
+    ).toBe(true);
+  });
+
+  it('activates owner PRO server RTC perks when server owner has PRO entitlement', async () => {
+    const ownerCookie = await registerUser(app, 'owner-pro-perks@example.com');
+    await createMask(app, ownerCookie, 'Owner Pro');
+
+    const createServerResponse = await app.inject({
+      method: 'POST',
+      url: '/servers',
+      headers: { cookie: ownerCookie },
+      payload: {
+        name: 'Owner Pro Guild',
+      },
+    });
+    expect(createServerResponse.statusCode).toBe(201);
+    const server = CreateServerResponseSchema.parse(createServerResponse.json()).server;
+
+    const beforeResponse = await app.inject({
+      method: 'GET',
+      url: `/servers/${server.id}`,
+      headers: { cookie: ownerCookie },
+    });
+    expect(beforeResponse.statusCode).toBe(200);
+    const beforeState = GetServerResponseSchema.parse(beforeResponse.json());
+    expect(beforeState.rtcPolicy.ownerProPerksActive).toBe(false);
+    expect(beforeState.rtcPolicy.participantCap).toBe(12);
+    expect(beforeState.rtcPolicy.recordingAllowed).toBe(false);
+
+    const meResponse = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { cookie: ownerCookie },
+    });
+    expect(meResponse.statusCode).toBe(200);
+    const me = MeResponseSchema.parse(meResponse.json());
+    await repository.createEntitlement({
+      userId: me.user.id,
+      kind: 'PRO',
+      source: 'DEV_MANUAL',
+      expiresAt: null,
+    });
+
+    const afterResponse = await app.inject({
+      method: 'GET',
+      url: `/servers/${server.id}`,
+      headers: { cookie: ownerCookie },
+    });
+    expect(afterResponse.statusCode).toBe(200);
+    const afterState = GetServerResponseSchema.parse(afterResponse.json());
+    expect(afterState.rtcPolicy.ownerProPerksActive).toBe(true);
+    expect(afterState.rtcPolicy.participantCap).toBe(32);
+    expect(afterState.rtcPolicy.recordingAllowed).toBe(false);
+  });
+
+  it('enforces server RTC participant cap when session is full', async () => {
+    const ownerCookie = await registerUser(app, 'rtc-cap-owner@example.com');
+    const ownerMask = await createMask(app, ownerCookie, 'Cap Owner');
+
+    const createServerResponse = await app.inject({
+      method: 'POST',
+      url: '/servers',
+      headers: { cookie: ownerCookie },
+      payload: {
+        name: 'Cap Test Guild',
+      },
+    });
+    expect(createServerResponse.statusCode).toBe(201);
+    const server = CreateServerResponseSchema.parse(createServerResponse.json()).server;
+
+    const serverStateResponse = await app.inject({
+      method: 'GET',
+      url: `/servers/${server.id}`,
+      headers: { cookie: ownerCookie },
+    });
+    expect(serverStateResponse.statusCode).toBe(200);
+    const serverState = GetServerResponseSchema.parse(serverStateResponse.json());
+    const channelId = serverState.channels[0]?.id;
+    expect(channelId).toBeDefined();
+
+    const activeSession = await repository.createVoiceSession({
+      contextType: 'SERVER_CHANNEL',
+      contextId: channelId,
+      livekitRoomName: `server-channel-${channelId}`,
+    });
+
+    for (let index = 0; index < 12; index += 1) {
+      await repository.createVoiceParticipant({
+        voiceSessionId: activeSession.id,
+        userId: randomUUID(),
+        maskId: ownerMask.id,
+        isServerMuted: false,
+      });
+    }
+
+    const rtcJoinResponse = await app.inject({
+      method: 'POST',
+      url: '/rtc/session',
+      headers: { cookie: ownerCookie },
+      payload: {
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+        maskId: ownerMask.id,
+      },
+    });
+    expect(rtcJoinResponse.statusCode).toBe(409);
+    expect(rtcJoinResponse.json().message).toContain('Participant cap reached');
+  });
+
+  it('records aura activity when a room message is sent', async () => {
+    const cookie = await registerUser(app, 'aura-message-flow@example.com');
+    const mask = await createMask(app, cookie, 'Aura Speaker');
+
+    const createRoomResponse = await app.inject({
+      method: 'POST',
+      url: '/rooms',
+      headers: { cookie },
+      payload: {
+        maskId: mask.id,
+        title: 'Aura Room',
+        kind: 'EPHEMERAL',
+      },
+    });
+    expect(createRoomResponse.statusCode).toBe(201);
+    const room = CreateRoomResponseSchema.parse(createRoomResponse.json()).room;
+
+    const auraBeforeResponse = await app.inject({
+      method: 'GET',
+      url: `/masks/${mask.id}/aura`,
+      headers: { cookie },
+    });
+    expect(auraBeforeResponse.statusCode).toBe(200);
+    const auraBefore = GetMaskAuraResponseSchema.parse(auraBeforeResponse.json());
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Unable to resolve websocket address');
+    }
+
+    const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`, {
+      headers: {
+        cookie,
+      },
+    });
+
+    const waitForOpen = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('websocket open timeout')), 6000);
+      ws.once('open', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      ws.once('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+
+    const waitForSocketEvent = (type: string) =>
+      new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          ws.off('message', onMessage);
+          ws.off('error', onError);
+          reject(new Error(`timed out waiting for socket event ${type}`));
+        }, 6000);
+
+        const onError = (err: Error) => {
+          clearTimeout(timer);
+          ws.off('message', onMessage);
+          reject(err);
+        };
+
+        const onMessage = (raw: RawData) => {
+          let payload: unknown;
+          try {
+            payload = JSON.parse(raw.toString());
+          } catch {
+            return;
+          }
+          const parsed = ServerSocketEventSchema.safeParse(payload);
+          if (!parsed.success) {
+            return;
+          }
+          if (parsed.data.type !== type) {
+            return;
+          }
+          clearTimeout(timer);
+          ws.off('message', onMessage);
+          ws.off('error', onError);
+          resolve();
+        };
+
+        ws.on('message', onMessage);
+        ws.on('error', onError);
+      });
+
+    await waitForOpen;
+    ws.send(
+      JSON.stringify(
+        ClientSocketEventSchema.parse({
+          type: 'JOIN_ROOM',
+          data: {
+            roomId: room.id,
+            maskId: mask.id,
+          },
+        }),
+      ),
+    );
+    await waitForSocketEvent('ROOM_STATE');
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    ws.send(
+      JSON.stringify(
+        ClientSocketEventSchema.parse({
+          type: 'SEND_MESSAGE',
+          data: {
+            roomId: room.id,
+            maskId: mask.id,
+            body: 'Aura signal check',
+          },
+        }),
+      ),
+    );
+    await waitForSocketEvent('NEW_MESSAGE');
+    ws.close();
+
+    const auraAfterResponse = await app.inject({
+      method: 'GET',
+      url: `/masks/${mask.id}/aura`,
+      headers: { cookie },
+    });
+    expect(auraAfterResponse.statusCode).toBe(200);
+    const auraAfter = GetMaskAuraResponseSchema.parse(auraAfterResponse.json());
+    expect(auraAfter.aura.score).toBeGreaterThanOrEqual(auraBefore.aura.score);
+    expect(Date.parse(auraAfter.aura.lastActivityAt)).toBeGreaterThanOrEqual(Date.parse(auraBefore.aura.lastActivityAt));
+    expect(auraAfter.recentEvents.some((event) => event.kind === 'MESSAGE_SENT')).toBe(true);
   });
 
   it('supports server create/invite/join/channel and kick authorization flow', async () => {

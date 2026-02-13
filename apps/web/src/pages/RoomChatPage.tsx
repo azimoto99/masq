@@ -10,6 +10,7 @@
   type RoomListItem,
   type RoomMemberState,
   type RoomMessage,
+  type SocketAuraSummary,
 } from '@masq/shared';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -26,6 +27,7 @@ import {
 } from '../lib/api';
 import { createRealtimeSocket } from '../lib/realtime';
 import { MaskAvatar } from '../components/MaskAvatar';
+import { AuraBadge } from '../components/AuraBadge';
 import { RTCPanel } from '../components/RTCPanel';
 import { SpacesSidebar } from '../components/SpacesSidebar';
 
@@ -85,6 +87,13 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
   const [nowMs, setNowMs] = useState(Date.now());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
+  const [auraByMaskId, setAuraByMaskId] = useState<Record<string, SocketAuraSummary>>(() =>
+    Object.fromEntries(
+      me.masks
+        .filter((mask) => mask.aura)
+        .map((mask) => [mask.id, mask.aura as SocketAuraSummary]),
+    ),
+  );
 
   const socketRef = useRef<WebSocket | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -252,11 +261,31 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
           setRoom(socketEvent.data.room);
           setMembers(socketEvent.data.members);
           setMessages(socketEvent.data.recentMessages);
+          setAuraByMaskId((current) => {
+            const next = { ...current };
+            for (const member of socketEvent.data.members) {
+              if (member.aura) {
+                next[member.maskId] = member.aura;
+              }
+            }
+            for (const message of socketEvent.data.recentMessages) {
+              if (message.mask.aura) {
+                next[message.mask.maskId] = message.mask.aura;
+              }
+            }
+            return next;
+          });
           setRoomExpired(false);
           setSocketError(null);
           break;
         }
         case 'NEW_MESSAGE': {
+          if (socketEvent.data.message.mask.aura) {
+            setAuraByMaskId((current) => ({
+              ...current,
+              [socketEvent.data.message.mask.maskId]: socketEvent.data.message.mask.aura as SocketAuraSummary,
+            }));
+          }
           setMessages((prev) => [...prev, socketEvent.data.message]);
           break;
         }
@@ -274,6 +303,12 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
 
             return [...prev, roomMember];
           });
+          if (roomMember.aura) {
+            setAuraByMaskId((current) => ({
+              ...current,
+              [roomMember.maskId]: roomMember.aura as SocketAuraSummary,
+            }));
+          }
           break;
         }
         case 'MEMBER_LEFT': {
@@ -313,6 +348,13 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
         }
         case 'ERROR': {
           setSocketError(socketEvent.data.message);
+          break;
+        }
+        case 'AURA_UPDATED': {
+          setAuraByMaskId((current) => ({
+            ...current,
+            [socketEvent.data.maskId]: socketEvent.data.aura,
+          }));
           break;
         }
       }
@@ -590,12 +632,14 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                     displayName={activeMask.displayName}
                     color={activeMask.color}
                     avatarUploadId={activeMask.avatarUploadId}
+                    auraColor={auraByMaskId[activeMask.id]?.color ?? activeMask.aura?.color}
                     sizeClassName="h-6 w-6"
                     textClassName="text-[9px]"
                   />
                   <p className="truncate text-[11px] uppercase tracking-[0.12em] text-slate-500">
                     {activeMask.avatarSeed}
                   </p>
+                  <AuraBadge aura={auraByMaskId[activeMask.id] ?? activeMask.aura} />
                 </div>
               ) : null}
             </div>
@@ -675,10 +719,12 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                               displayName={message.mask.displayName}
                               color={message.mask.color}
                               avatarUploadId={message.mask.avatarUploadId}
+                              auraColor={auraByMaskId[message.mask.maskId]?.color ?? message.mask.aura?.color}
                               sizeClassName="h-6 w-6"
                               textClassName="text-[9px]"
                             />
                             <span className="font-medium text-white">{message.mask.displayName}</span>
+                            <AuraBadge aura={auraByMaskId[message.mask.maskId] ?? message.mask.aura} />
                             <span className="text-xs text-slate-500">{message.mask.avatarSeed}</span>
                           </div>
                           <span className="text-xs text-slate-500">{formatTimestamp(message.createdAt)}</span>
@@ -928,10 +974,12 @@ export function RoomChatPage({ me }: RoomChatPageProps) {
                               displayName={member.displayName}
                               color={member.color}
                               avatarUploadId={member.avatarUploadId}
+                              auraColor={auraByMaskId[member.maskId]?.color ?? member.aura?.color}
                               sizeClassName="h-6 w-6"
                               textClassName="text-[9px]"
                             />
                             <p className="text-sm font-medium text-white">{member.displayName}</p>
+                            <AuraBadge aura={auraByMaskId[member.maskId] ?? member.aura} />
                           </div>
                           <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-slate-500">
                             {member.role} - {member.avatarSeed}

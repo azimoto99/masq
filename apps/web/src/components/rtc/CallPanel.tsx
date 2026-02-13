@@ -86,12 +86,19 @@ export function CallPanel({
             const maskId = mask?.maskId ?? '';
             const displayName = mask?.displayName ?? (participant.isLocal ? 'You' : `Participant ${index + 1}`);
             const color = mask?.color ?? '#78e6da';
+            const auraColor = mask?.auraColor;
 
             return (
               <article key={participant.identity} className="rounded-md border border-ink-700 bg-ink-800/80 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                    <span
+                      className="h-2.5 w-2.5 rounded-full border border-white/30"
+                      style={{
+                        backgroundColor: auraColor ?? color,
+                        boxShadow: auraColor ? `0 0 0 2px ${auraColor}33` : undefined,
+                      }}
+                    />
                     <div>
                       <p className="text-[11px] font-medium text-slate-100">{displayName}</p>
                       <p className="text-[10px] uppercase tracking-[0.11em] text-slate-500">

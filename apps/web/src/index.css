@@ -83,6 +83,47 @@ select:focus-visible {
   }
 }
 
+@keyframes landing-grid-drift {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(28px);
+  }
+}
+
+@keyframes landing-orb-float-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(16px, -18px, 0);
+  }
+}
+
+@keyframes landing-orb-float-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-18px, 14px, 0);
+  }
+}
+
+@keyframes landing-ring-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 @layer components {
   .masq-surface {
     border-radius: var(--masq-radius-lg);
@@ -108,5 +149,44 @@ select:focus-visible {
 
   .masq-live-ring {
     box-shadow: 0 0 0 1px rgba(114, 207, 170, 0.35), 0 0 0 3px rgba(114, 207, 170, 0.12);
+  }
+
+  .landing-noise::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.28;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 0.5px, transparent 0.5px);
+    background-size: 4px 4px;
+    mix-blend-mode: soft-light;
+  }
+
+  .landing-grid {
+    background-image:
+      linear-gradient(rgba(65, 83, 114, 0.2) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(65, 83, 114, 0.2) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(circle at top, rgba(0, 0, 0, 0.95), transparent 72%);
+    animation: landing-grid-drift 18s linear infinite;
+  }
+
+  .landing-orb-a {
+    animation: landing-orb-float-a 10s ease-in-out infinite;
+  }
+
+  .landing-orb-b {
+    animation: landing-orb-float-b 12s ease-in-out infinite;
+  }
+
+  .landing-gradient-ring {
+    background: linear-gradient(
+      130deg,
+      rgba(56, 189, 248, 0.68),
+      rgba(16, 185, 129, 0.48),
+      rgba(99, 102, 241, 0.48),
+      rgba(56, 189, 248, 0.68)
+    );
+    background-size: 220% 220%;
+    animation: landing-ring-shift 8s ease-in-out infinite;
   }
 }

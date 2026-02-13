@@ -11,6 +11,7 @@ import {
   type ServerListItem,
   type ServerMember,
   type ServerMemberRole,
+  type SocketAuraSummary,
 } from '@masq/shared';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -35,6 +36,7 @@ import {
 } from '../lib/api';
 import { createRealtimeSocket } from '../lib/realtime';
 import { MaskAvatar } from '../components/MaskAvatar';
+import { AuraBadge } from '../components/AuraBadge';
 import { SpacesSidebar } from '../components/SpacesSidebar';
 import { CallBar } from '../components/rtc/CallBar';
 import { VideoStage } from '../components/rtc/VideoStage';
@@ -117,6 +119,13 @@ export function ServersPage({ me }: ServersPageProps) {
   const [serverDialogTab, setServerDialogTab] = useState<'create' | 'join'>('create');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
+  const [auraByMaskId, setAuraByMaskId] = useState<Record<string, SocketAuraSummary>>(() =>
+    Object.fromEntries(
+      me.masks
+        .filter((mask) => mask.aura)
+        .map((mask) => [mask.id, mask.aura as SocketAuraSummary]),
+    ),
+  );
   const globalActiveMaskId = window.localStorage.getItem(ACTIVE_MASK_STORAGE_KEY) ?? me.masks[0]?.id ?? null;
   const serverDialogQuery = searchParams.get('serverDialog');
 
@@ -349,6 +358,20 @@ export function ServersPage({ me }: ServersPageProps) {
 
           setChannelMembers(socketEvent.data.members);
           setChannelMessages(socketEvent.data.recentMessages);
+          setAuraByMaskId((current) => {
+            const next = { ...current };
+            for (const member of socketEvent.data.members) {
+              if (member.mask.aura) {
+                next[member.mask.maskId] = member.mask.aura;
+              }
+            }
+            for (const message of socketEvent.data.recentMessages) {
+              if (message.mask.aura) {
+                next[message.mask.maskId] = message.mask.aura;
+              }
+            }
+            return next;
+          });
           setSocketError(null);
           break;
         }
@@ -357,6 +380,12 @@ export function ServersPage({ me }: ServersPageProps) {
             return;
           }
 
+          if (socketEvent.data.message.mask.aura) {
+            setAuraByMaskId((current) => ({
+              ...current,
+              [socketEvent.data.message.mask.maskId]: socketEvent.data.message.mask.aura as SocketAuraSummary,
+            }));
+          }
           setChannelMessages((current) => [...current, socketEvent.data.message]);
           break;
         }
@@ -374,6 +403,12 @@ export function ServersPage({ me }: ServersPageProps) {
             }
             return [...current, joinedMember];
           });
+          if (joinedMember.mask.aura) {
+            setAuraByMaskId((current) => ({
+              ...current,
+              [joinedMember.mask.maskId]: joinedMember.mask.aura as SocketAuraSummary,
+            }));
+          }
           break;
         }
         case 'MEMBER_LEFT': {
@@ -390,6 +425,13 @@ export function ServersPage({ me }: ServersPageProps) {
         }
         case 'ERROR': {
           setSocketError(socketEvent.data.message);
+          break;
+        }
+        case 'AURA_UPDATED': {
+          setAuraByMaskId((current) => ({
+            ...current,
+            [socketEvent.data.maskId]: socketEvent.data.aura,
+          }));
           break;
         }
         default:
@@ -1007,10 +1049,12 @@ export function ServersPage({ me }: ServersPageProps) {
                                 displayName={message.mask.displayName}
                                 color={message.mask.color}
                                 avatarUploadId={message.mask.avatarUploadId}
+                                auraColor={auraByMaskId[message.mask.maskId]?.color ?? message.mask.aura?.color}
                                 sizeClassName="h-6 w-6"
                                 textClassName="text-[9px]"
                               />
                               <span className="font-medium text-white">{message.mask.displayName}</span>
+                              <AuraBadge aura={auraByMaskId[message.mask.maskId] ?? message.mask.aura} />
                               <span className="text-xs text-slate-500">{message.mask.avatarSeed}</span>
                             </div>
                             <span className="text-xs text-slate-500">{formatTimestamp(message.createdAt)}</span>
@@ -1174,11 +1218,13 @@ export function ServersPage({ me }: ServersPageProps) {
                                   displayName={member.serverMask.displayName}
                                   color={member.serverMask.color}
                                   avatarUploadId={member.serverMask.avatarUploadId}
+                                  auraColor={auraByMaskId[member.serverMask.id]?.color}
                                   sizeClassName="h-6 w-6"
                                   textClassName="text-[9px]"
                                 />
                                 <div className="min-w-0">
                                   <p className="truncate text-sm font-medium text-white">{member.serverMask.displayName}</p>
+                                  <AuraBadge aura={auraByMaskId[member.serverMask.id]} />
                                   {member.userId === me.user.id ? (
                                     <p className="text-[10px] uppercase tracking-[0.12em] text-neon-200">You</p>
                                   ) : null}

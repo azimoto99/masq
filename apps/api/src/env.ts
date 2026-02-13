@@ -64,6 +64,9 @@ const RawEnvSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   UPLOADS_DIR: z.string().optional(),
   MAX_IMAGE_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  ENABLE_DEV_ENTITLEMENTS: BooleanFromEnvSchema.default(false),
+  ENABLE_STRIPE_WEBHOOK: BooleanFromEnvSchema.default(false),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 const parsed = RawEnvSchema.safeParse(process.env);
@@ -89,6 +92,10 @@ if (parsed.data.COOKIE_SAME_SITE === 'none' && !cookieSecure) {
 
 if (parsed.data.NODE_ENV === 'production' && parsed.data.JWT_SECRET === DEFAULT_JWT_SECRET) {
   throw new Error('JWT_SECRET must be changed from the default value in production');
+}
+
+if (parsed.data.ENABLE_STRIPE_WEBHOOK && !parsed.data.STRIPE_WEBHOOK_SECRET) {
+  throw new Error('STRIPE_WEBHOOK_SECRET is required when ENABLE_STRIPE_WEBHOOK=true');
 }
 
 const livekitConfigCount = [

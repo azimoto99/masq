@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -21,12 +21,18 @@ import { z } from 'zod';
 import {
   ALL_SERVER_PERMISSIONS,
   ALLOWED_IMAGE_CONTENT_TYPES,
+  AuraSummarySchema,
   AuthResponseSchema,
   ClientSocketEventSchema,
+  FeatureKeySchema,
+  CreateNarrativeRoomRequestSchema,
+  CreateNarrativeRoomResponseSchema,
   CreateServerRequestSchema,
   CreateServerResponseSchema,
   CreateMaskRequestSchema,
   CreateMaskResponseSchema,
+  DevGrantEntitlementRequestSchema,
+  DevGrantEntitlementResponseSchema,
   SetMaskAvatarParamsSchema,
   SetMaskAvatarResponseSchema,
   CreateFriendRequestRequestSchema,
@@ -59,7 +65,11 @@ import {
   FriendRequestsResponseSchema,
   FriendsListResponseSchema,
   FriendUserParamsSchema,
+  GetMaskAuraResponseSchema,
+  GetNarrativeRoomResponseSchema,
   HealthResponseSchema,
+  JoinNarrativeRoomRequestSchema,
+  JoinNarrativeRoomResponseSchema,
   UploadImageRequestSchema,
   UploadImageResponseSchema,
   UploadParamsSchema,
@@ -74,8 +84,13 @@ import {
   KickServerMemberResponseSchema,
   ListRoomsQuerySchema,
   ListRoomsResponseSchema,
+  ListNarrativeTemplatesResponseSchema,
   ListServerRolesResponseSchema,
   ListServersResponseSchema,
+  LeaveNarrativeRoomRequestSchema,
+  LeaveNarrativeRoomResponseSchema,
+  SetNarrativeReadyRequestSchema,
+  SetNarrativeReadyResponseSchema,
   LockRoomRequestSchema,
   LoginRequestSchema,
   LogoutResponseSchema,
@@ -83,12 +98,18 @@ import {
   MAX_MASKS_PER_USER,
   MAX_ROOM_MESSAGE_LENGTH,
   MAX_MUTE_MINUTES,
+  MaskAuraParamsSchema,
   MeResponseSchema,
   MuteRtcParticipantRequestSchema,
   MuteRtcParticipantResponseSchema,
   ModerateRoomParamsSchema,
   ModerateRoomResponseSchema,
   MuteRoomMemberRequestSchema,
+  NarrativeActionResponseSchema,
+  NarrativeActorRequestSchema,
+  NarrativePhaseSchema,
+  NarrativeRoleDefinitionSchema,
+  NarrativeRoomParamsSchema,
   RegisterRequestSchema,
   ServerChannelParamsSchema,
   ServerMemberParamsSchema,
@@ -106,11 +127,30 @@ import {
   LeaveRtcSessionResponseSchema,
   RtcSessionParamsSchema,
   ServerSocketEventSchema,
+  SendNarrativeMessageRequestSchema,
+  SendNarrativeMessageResponseSchema,
   StartDmRequestSchema,
+  StripeWebhookResponseSchema,
+  UpdateRtcSettingsRequestSchema,
+  UpdateRtcSettingsResponseSchema,
+  UpdateServerRtcPolicyRequestSchema,
+  UpdateServerRtcPolicyResponseSchema,
   UpdateServerSettingsRequestSchema,
   UpdateServerSettingsResponseSchema,
+  UserRtcSettingsSchema,
   UpdateServerRoleRequestSchema,
   type RtcContextType,
+  type AuraEventKind,
+  type AuraSummary,
+  type EntitlementKind,
+  type FeatureKey,
+  type NarrativePhase,
+  type NarrativeRoleDefinition,
+  type NarrativeTemplate,
+  type Plan,
+  type ServerMemberRole,
+  type SocketAuraSummary,
+  type UserRtcSettings,
   type UploadContextType,
   type UploadKind,
   type Channel,
@@ -129,10 +169,13 @@ import {
 } from '@masq/shared';
 import type { Env } from './env.js';
 import type {
+  AuraEventRecord,
+  CosmeticUnlockRecord,
   ChannelRecord,
   DmMessageRecord,
   DmParticipantRecord,
   DmThreadRecord,
+  EntitlementRecord,
   FriendRequestRecord,
   FriendUserRecord,
   IncomingFriendRequestRecord,
@@ -140,6 +183,12 @@ import type {
   MasqRepository,
   MessageRecord,
   OutgoingFriendRequestRecord,
+  NarrativeMembershipRecord,
+  NarrativeMessageRecord,
+  NarrativeRoleAssignmentRecord,
+  NarrativeRoomRecord,
+  NarrativeSessionStateRecord,
+  NarrativeTemplateRecord,
   RedisClient,
   ServerInviteRecord,
   ServerListItemRecord,
@@ -151,10 +200,25 @@ import type {
   RoomModerationRecord,
   RoomRecord,
   UserRecord,
+  UserRtcSettingsRecord,
   VoiceParticipantRecord,
   VoiceSessionRecord,
   UploadRecord,
 } from './domain/repository.js';
+import {
+  AURA_MESSAGE_WINDOW_MS,
+  computeAuraEventWeight,
+  computeAuraSummary,
+} from './domain/aura.js';
+import {
+  advanceNarrativePhase,
+  assignNarrativeRoles,
+  canActorAdvanceNarrative,
+  canActorStartNarrative,
+  createSeededRandom,
+  getNarrativePhaseTransition,
+  shouldAutoAdvanceNarrativePhase,
+} from './domain/narrative.js';
 
 interface BuildAppOptions {
   env: Env;
@@ -168,6 +232,8 @@ interface SocketSession {
   userId: string;
   joinedRoomId?: string;
   joinedMember?: RoomMemberState;
+  joinedNarrativeRoomId?: string;
+  joinedNarrativeMaskId?: string;
   joinedDmThreadId?: string;
   joinedDmMaskId?: string;
   joinedChannelId?: string;
@@ -196,6 +262,21 @@ const WS_OPEN_STATE = 1;
 const FALLBACK_UPLOADS_DIRECTORY = './uploads';
 const FRIEND_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const FRIEND_CODE_LENGTH = 8;
+const NARRATIVE_TICK_INTERVAL_MS = 1000;
+const MAX_NARRATIVE_RECENT_MESSAGES = 120;
+const FREE_SERVER_RTC_PARTICIPANT_CAP = 12;
+const PRO_SERVER_RTC_PARTICIPANT_CAP = 32;
+const DEFAULT_RTC_SETTINGS: UserRtcSettings = {
+  advancedNoiseSuppression: false,
+  pushToTalkMode: 'HOLD',
+  pushToTalkHotkey: 'V',
+  multiPinEnabled: false,
+  pictureInPictureEnabled: false,
+  defaultScreenshareFps: 30,
+  defaultScreenshareQuality: 'balanced',
+  cursorHighlight: true,
+  selectedAuraStyle: 'AURA_STYLE_BASE',
+};
 
 const generateFriendCode = (): string => {
   const entropy = randomBytes(FRIEND_CODE_LENGTH);
@@ -214,13 +295,14 @@ const serializeUser = (user: UserRecord) => ({
   createdAt: user.createdAt.toISOString(),
 });
 
-const serializeMask = (mask: MaskRecord) => ({
+const serializeMask = (mask: MaskRecord, aura?: AuraSummary | null) => ({
   id: mask.id,
   userId: mask.userId,
   displayName: mask.displayName,
   color: mask.color,
   avatarSeed: mask.avatarSeed,
   avatarUploadId: mask.avatarUploadId ?? null,
+  aura: aura ?? undefined,
   createdAt: mask.createdAt.toISOString(),
 });
 
@@ -326,12 +408,16 @@ const serializeRoomListItem = (item: {
   joinedAt: item.joinedAt.toISOString(),
 });
 
-const serializeSocketMaskIdentity = (mask: MaskRecord): SocketMaskIdentity => ({
+const serializeSocketMaskIdentity = (
+  mask: MaskRecord,
+  aura?: SocketAuraSummary | null,
+): SocketMaskIdentity => ({
   maskId: mask.id,
   displayName: mask.displayName,
   avatarSeed: mask.avatarSeed,
   color: mask.color,
   avatarUploadId: mask.avatarUploadId ?? null,
+  aura: aura ?? undefined,
 });
 
 const serializeImageAttachment = (upload: UploadRecord | null): ImageAttachment | null => {
@@ -403,24 +489,25 @@ const serializeChannel = (channel: ChannelRecord): Channel => ({
 const serializeServerChannelMember = (
   member: ServerMemberRecord,
   mask: MaskRecord = member.serverMask,
+  aura?: SocketAuraSummary | null,
 ): ServerChannelMemberState => ({
   userId: member.userId,
   role: member.role,
-  mask: serializeSocketMaskIdentity(mask),
+  mask: serializeSocketMaskIdentity(mask, aura),
 });
 
-const serializeRoomMember = (membership: RoomMembershipRecord): RoomMemberState => ({
-  ...serializeSocketMaskIdentity(membership.mask),
+const serializeRoomMember = (membership: RoomMembershipRecord, aura?: SocketAuraSummary | null): RoomMemberState => ({
+  ...serializeSocketMaskIdentity(membership.mask, aura),
   role: membership.role,
 });
 
-const serializeRealtimeMessage = (message: MessageRecord): RoomMessage => ({
+const serializeRealtimeMessage = (message: MessageRecord, aura?: SocketAuraSummary | null): RoomMessage => ({
   id: message.id,
   roomId: message.roomId,
   body: message.body,
   image: serializeImageAttachment(message.imageUpload),
   createdAt: message.createdAt.toISOString(),
-  mask: serializeSocketMaskIdentity(message.mask),
+  mask: serializeSocketMaskIdentity(message.mask, aura),
 });
 
 const serializeDmThread = (thread: DmThreadRecord) => ({
@@ -430,27 +517,30 @@ const serializeDmThread = (thread: DmThreadRecord) => ({
   createdAt: thread.createdAt.toISOString(),
 });
 
-const serializeDmParticipant = (participant: DmParticipantRecord) => ({
+const serializeDmParticipant = (participant: DmParticipantRecord, aura?: SocketAuraSummary | null) => ({
   userId: participant.userId,
-  mask: serializeSocketMaskIdentity(participant.activeMask),
+  mask: serializeSocketMaskIdentity(participant.activeMask, aura),
 });
 
-const serializeDmMessage = (message: DmMessageRecord): DmMessage => ({
+const serializeDmMessage = (message: DmMessageRecord, aura?: SocketAuraSummary | null): DmMessage => ({
   id: message.id,
   threadId: message.threadId,
   body: message.body,
   image: serializeImageAttachment(message.imageUpload),
   createdAt: message.createdAt.toISOString(),
-  mask: serializeSocketMaskIdentity(message.mask),
+  mask: serializeSocketMaskIdentity(message.mask, aura),
 });
 
-const serializeServerMessage = (message: ServerMessageRecord): ChannelMessage => ({
+const serializeServerMessage = (
+  message: ServerMessageRecord,
+  aura?: SocketAuraSummary | null,
+): ChannelMessage => ({
   id: message.id,
   channelId: message.channelId,
   body: message.body,
   image: serializeImageAttachment(message.imageUpload),
   createdAt: message.createdAt.toISOString(),
-  mask: serializeSocketMaskIdentity(message.mask),
+  mask: serializeSocketMaskIdentity(message.mask, aura),
 });
 
 const serializeVoiceSession = (session: VoiceSessionRecord) => ({
@@ -507,6 +597,183 @@ const serializeOutgoingFriendRequest = (item: OutgoingFriendRequestRecord) => ({
   toUser: serializeFriendUser(item.toUser),
 });
 
+const serializeAuraSummary = (summary: AuraSummary) =>
+  AuraSummarySchema.parse({
+    maskId: summary.maskId,
+    score: summary.score,
+    effectiveScore: summary.effectiveScore,
+    tier: summary.tier,
+    tierName: summary.tierName,
+    color: summary.color,
+    nextTierAt: summary.nextTierAt,
+    percentToNext: summary.percentToNext,
+    lastActivityAt: summary.lastActivityAt,
+  });
+
+const toSocketAuraSummary = (summary: AuraSummary): SocketAuraSummary => ({
+  score: summary.score,
+  effectiveScore: summary.effectiveScore,
+  tier: summary.tier,
+  color: summary.color,
+  nextTierAt: summary.nextTierAt,
+  lastActivityAt: summary.lastActivityAt,
+});
+
+const serializeAuraEvent = (event: AuraEventRecord) => ({
+  id: event.id,
+  maskId: event.maskId,
+  kind: event.kind,
+  weight: event.weight,
+  meta: event.meta ?? null,
+  createdAt: event.createdAt.toISOString(),
+});
+
+const serializeEntitlement = (entitlement: EntitlementRecord) => ({
+  id: entitlement.id,
+  userId: entitlement.userId,
+  kind: entitlement.kind,
+  source: entitlement.source,
+  expiresAt: entitlement.expiresAt ? entitlement.expiresAt.toISOString() : null,
+  createdAt: entitlement.createdAt.toISOString(),
+});
+
+const serializeCosmeticUnlock = (unlock: CosmeticUnlockRecord) => ({
+  id: unlock.id,
+  userId: unlock.userId,
+  key: unlock.key,
+  unlockedAt: unlock.unlockedAt.toISOString(),
+});
+
+const SERVER_ROLE_WEIGHT: Record<ServerMemberRole, number> = {
+  MEMBER: 0,
+  ADMIN: 1,
+  OWNER: 2,
+};
+
+const isServerRoleAtLeast = (role: ServerMemberRole, minimumRole: ServerMemberRole): boolean => {
+  return SERVER_ROLE_WEIGHT[role] >= SERVER_ROLE_WEIGHT[minimumRole];
+};
+
+const isEntitlementActive = (entitlement: EntitlementRecord, now: Date): boolean => {
+  if (!entitlement.expiresAt) {
+    return true;
+  }
+
+  return entitlement.expiresAt.getTime() > now.getTime();
+};
+
+const resolveCurrentPlan = (entitlements: readonly EntitlementRecord[], now: Date): Plan => {
+  for (const entitlement of entitlements) {
+    if (entitlement.kind === 'PRO' && isEntitlementActive(entitlement, now)) {
+      return 'PRO';
+    }
+  }
+
+  return 'FREE';
+};
+
+const USER_PLAN_FEATURES = new Set<FeatureKey>([
+  'PRO_ADVANCED_DEVICE_CONTROLS',
+  'PRO_ADVANCED_LAYOUT',
+  'PRO_SCREENSHARE_ENHANCEMENTS',
+  'PRO_AURA_STYLES',
+]);
+
+const OWNER_SERVER_FEATURES = new Set<FeatureKey>([
+  'SERVER_OWNER_HIGH_RTC_CAP',
+  'SERVER_OWNER_STAGE_MODE',
+  'SERVER_OWNER_SCREENSHARE_POLICY',
+]);
+
+const serializeUserRtcSettings = (settings: UserRtcSettingsRecord | null): UserRtcSettings => {
+  if (!settings) {
+    return UserRtcSettingsSchema.parse(DEFAULT_RTC_SETTINGS);
+  }
+
+  return UserRtcSettingsSchema.parse({
+    advancedNoiseSuppression: settings.advancedNoiseSuppression,
+    pushToTalkMode: settings.pushToTalkMode,
+    pushToTalkHotkey: settings.pushToTalkHotkey,
+    multiPinEnabled: settings.multiPinEnabled,
+    pictureInPictureEnabled: settings.pictureInPictureEnabled,
+    defaultScreenshareFps: settings.defaultScreenshareFps,
+    defaultScreenshareQuality: settings.defaultScreenshareQuality,
+    cursorHighlight: settings.cursorHighlight,
+    selectedAuraStyle: settings.selectedAuraStyle,
+  });
+};
+
+const parseNarrativeTemplatePhases = (value: unknown): NarrativePhase[] => {
+  const parsed = z.array(NarrativePhaseSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+};
+
+const parseNarrativeTemplateRoles = (value: unknown): NarrativeRoleDefinition[] => {
+  const parsed = z.array(NarrativeRoleDefinitionSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+};
+
+const serializeNarrativeTemplate = (template: NarrativeTemplateRecord): NarrativeTemplate => ({
+  id: template.id,
+  slug: template.slug,
+  name: template.name,
+  description: template.description,
+  minPlayers: template.minPlayers,
+  maxPlayers: template.maxPlayers,
+  phases: parseNarrativeTemplatePhases(template.phases),
+  roles: parseNarrativeTemplateRoles(template.roles),
+  requiresEntitlement: template.requiresEntitlement ?? null,
+  createdAt: template.createdAt.toISOString(),
+});
+
+const serializeNarrativeRoom = (room: NarrativeRoomRecord) => ({
+  id: room.id,
+  templateId: room.templateId,
+  code: room.code,
+  hostMaskId: room.hostMaskId,
+  seed: room.seed,
+  status: room.status,
+  createdAt: room.createdAt.toISOString(),
+  endedAt: room.endedAt ? room.endedAt.toISOString() : null,
+});
+
+const serializeNarrativeMembership = (membership: NarrativeMembershipRecord) => ({
+  id: membership.id,
+  roomId: membership.roomId,
+  maskId: membership.maskId,
+  isReady: membership.isReady,
+  joinedAt: membership.joinedAt.toISOString(),
+  leftAt: membership.leftAt ? membership.leftAt.toISOString() : null,
+});
+
+const serializeNarrativeSessionState = (state: NarrativeSessionStateRecord) => ({
+  roomId: state.roomId,
+  phaseIndex: state.phaseIndex,
+  phaseEndsAt: state.phaseEndsAt ? state.phaseEndsAt.toISOString() : null,
+  startedAt: state.startedAt.toISOString(),
+  updatedAt: state.updatedAt.toISOString(),
+});
+
+const serializeNarrativeRoleAssignment = (assignment: NarrativeRoleAssignmentRecord) => ({
+  id: assignment.id,
+  roomId: assignment.roomId,
+  maskId: assignment.maskId,
+  roleKey: assignment.roleKey,
+  secretPayload: assignment.secretPayload ?? null,
+  createdAt: assignment.createdAt.toISOString(),
+});
+
+const serializeNarrativeMessage = (
+  message: NarrativeMessageRecord,
+  aura?: SocketAuraSummary | null,
+) => ({
+  id: message.id,
+  roomId: message.roomId,
+  body: message.body,
+  createdAt: message.createdAt.toISOString(),
+  mask: serializeSocketMaskIdentity(message.mask, aura),
+});
+
 const parseOrReply = <TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   payload: unknown,
@@ -549,6 +816,43 @@ const sanitizeMessageBody = (body: string): string => {
   const collapsedWhitespace = withoutControlChars.replace(/\s+/g, ' ').trim();
   const escaped = escapeHtml(collapsedWhitespace);
   return escaped.slice(0, MAX_ROOM_MESSAGE_LENGTH);
+};
+
+const MENTION_MASK_ID_PATTERN = /@\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]|@([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+
+const extractMentionedMaskIds = (body: string): string[] => {
+  const ids = new Set<string>();
+  for (const match of body.matchAll(MENTION_MASK_ID_PATTERN)) {
+    const candidate = (match[1] ?? match[2] ?? '').trim().toLowerCase();
+    if (candidate.length === 36) {
+      ids.add(candidate);
+    }
+  }
+  return Array.from(ids.values());
+};
+
+const verifyStripeWebhookSignature = (payload: string, signatureHeader: string, secret: string): boolean => {
+  const fragments = signatureHeader
+    .split(',')
+    .map((fragment) => fragment.trim())
+    .filter((fragment) => fragment.length > 0);
+  const timestamp = fragments.find((fragment) => fragment.startsWith('t='))?.slice(2) ?? '';
+  const providedSignature = fragments.find((fragment) => fragment.startsWith('v1='))?.slice(3) ?? '';
+  if (!timestamp || !providedSignature) {
+    return false;
+  }
+
+  const expectedSignature = createHmac('sha256', secret)
+    .update(`${timestamp}.${payload}`)
+    .digest('hex');
+
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+  const providedBuffer = Buffer.from(providedSignature, 'hex');
+  if (expectedBuffer.length !== providedBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expectedBuffer, providedBuffer);
 };
 
 const sanitizeImageFileName = (value: string): string => {
@@ -730,9 +1034,12 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
 
   const sessions = new Map<WebSocket, SocketSession>();
   const roomSockets = new Map<string, Set<WebSocket>>();
+  const narrativeSockets = new Map<string, Set<WebSocket>>();
   const dmSockets = new Map<string, Set<WebSocket>>();
   const channelSockets = new Map<string, Set<WebSocket>>();
   const roomExpiryTimers = new Map<string, NodeJS.Timeout>();
+  const auraSummaryCache = new Map<string, AuraSummary>();
+  let narrativeTickTimer: NodeJS.Timeout | null = null;
   const uploadRoot = path.resolve(process.cwd(), env.UPLOADS_DIR ?? FALLBACK_UPLOADS_DIRECTORY);
   await mkdir(uploadRoot, { recursive: true });
   app.log.info({ uploadRoot }, 'upload_storage_ready');
@@ -743,6 +1050,586 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
   const roomServiceClient = livekitConfigured
     ? new RoomServiceClient(livekitUrl as string, livekitApiKey as string, livekitApiSecret as string)
     : null;
+
+  type AuraRepoMethods = {
+    findMaskAuraByMaskId: NonNullable<MasqRepository['findMaskAuraByMaskId']>;
+    upsertMaskAura: NonNullable<MasqRepository['upsertMaskAura']>;
+    updateMaskAura: NonNullable<MasqRepository['updateMaskAura']>;
+    listAuraEventsByMask: NonNullable<MasqRepository['listAuraEventsByMask']>;
+    countAuraEventsByMaskKindSince: NonNullable<MasqRepository['countAuraEventsByMaskKindSince']>;
+    createAuraEvent: NonNullable<MasqRepository['createAuraEvent']>;
+  };
+
+  type NarrativeRepoMethods = {
+    listNarrativeTemplates: NonNullable<MasqRepository['listNarrativeTemplates']>;
+    upsertNarrativeTemplateBySlug: NonNullable<MasqRepository['upsertNarrativeTemplateBySlug']>;
+    findNarrativeTemplateById: NonNullable<MasqRepository['findNarrativeTemplateById']>;
+    createNarrativeRoom: NonNullable<MasqRepository['createNarrativeRoom']>;
+    findNarrativeRoomById: NonNullable<MasqRepository['findNarrativeRoomById']>;
+    findNarrativeRoomByCode: NonNullable<MasqRepository['findNarrativeRoomByCode']>;
+    listNarrativeRoomsByStatus: NonNullable<MasqRepository['listNarrativeRoomsByStatus']>;
+    updateNarrativeRoom: NonNullable<MasqRepository['updateNarrativeRoom']>;
+    addNarrativeMembership: NonNullable<MasqRepository['addNarrativeMembership']>;
+    updateNarrativeMembershipReady: NonNullable<MasqRepository['updateNarrativeMembershipReady']>;
+    removeNarrativeMembership: NonNullable<MasqRepository['removeNarrativeMembership']>;
+    findNarrativeMembership: NonNullable<MasqRepository['findNarrativeMembership']>;
+    listNarrativeMemberships: NonNullable<MasqRepository['listNarrativeMemberships']>;
+    upsertNarrativeSessionState: NonNullable<MasqRepository['upsertNarrativeSessionState']>;
+    findNarrativeSessionState: NonNullable<MasqRepository['findNarrativeSessionState']>;
+    createNarrativeRoleAssignment: NonNullable<MasqRepository['createNarrativeRoleAssignment']>;
+    listNarrativeRoleAssignments: NonNullable<MasqRepository['listNarrativeRoleAssignments']>;
+    findNarrativeRoleAssignment: NonNullable<MasqRepository['findNarrativeRoleAssignment']>;
+    createNarrativeMessage: NonNullable<MasqRepository['createNarrativeMessage']>;
+    listNarrativeMessages: NonNullable<MasqRepository['listNarrativeMessages']>;
+  };
+
+  type MonetizationRepoMethods = {
+    listEntitlementsByUser: NonNullable<MasqRepository['listEntitlementsByUser']>;
+    createEntitlement: NonNullable<MasqRepository['createEntitlement']>;
+    listCosmeticUnlocksByUser: NonNullable<MasqRepository['listCosmeticUnlocksByUser']>;
+    findUserRtcSettings: NonNullable<MasqRepository['findUserRtcSettings']>;
+    upsertUserRtcSettings: NonNullable<MasqRepository['upsertUserRtcSettings']>;
+  };
+
+  const resolveAuraRepo = (): AuraRepoMethods | null => {
+    if (
+      !repo.findMaskAuraByMaskId ||
+      !repo.upsertMaskAura ||
+      !repo.updateMaskAura ||
+      !repo.listAuraEventsByMask ||
+      !repo.countAuraEventsByMaskKindSince ||
+      !repo.createAuraEvent
+    ) {
+      return null;
+    }
+
+    return {
+      findMaskAuraByMaskId: repo.findMaskAuraByMaskId.bind(repo),
+      upsertMaskAura: repo.upsertMaskAura.bind(repo),
+      updateMaskAura: repo.updateMaskAura.bind(repo),
+      listAuraEventsByMask: repo.listAuraEventsByMask.bind(repo),
+      countAuraEventsByMaskKindSince: repo.countAuraEventsByMaskKindSince.bind(repo),
+      createAuraEvent: repo.createAuraEvent.bind(repo),
+    };
+  };
+
+  const resolveNarrativeRepo = (): NarrativeRepoMethods | null => {
+    if (
+      !repo.listNarrativeTemplates ||
+      !repo.upsertNarrativeTemplateBySlug ||
+      !repo.findNarrativeTemplateById ||
+      !repo.createNarrativeRoom ||
+      !repo.findNarrativeRoomById ||
+      !repo.findNarrativeRoomByCode ||
+      !repo.listNarrativeRoomsByStatus ||
+      !repo.updateNarrativeRoom ||
+      !repo.addNarrativeMembership ||
+      !repo.updateNarrativeMembershipReady ||
+      !repo.removeNarrativeMembership ||
+      !repo.findNarrativeMembership ||
+      !repo.listNarrativeMemberships ||
+      !repo.upsertNarrativeSessionState ||
+      !repo.findNarrativeSessionState ||
+      !repo.createNarrativeRoleAssignment ||
+      !repo.listNarrativeRoleAssignments ||
+      !repo.findNarrativeRoleAssignment ||
+      !repo.createNarrativeMessage ||
+      !repo.listNarrativeMessages
+    ) {
+      return null;
+    }
+
+    return {
+      listNarrativeTemplates: repo.listNarrativeTemplates.bind(repo),
+      upsertNarrativeTemplateBySlug: repo.upsertNarrativeTemplateBySlug.bind(repo),
+      findNarrativeTemplateById: repo.findNarrativeTemplateById.bind(repo),
+      createNarrativeRoom: repo.createNarrativeRoom.bind(repo),
+      findNarrativeRoomById: repo.findNarrativeRoomById.bind(repo),
+      findNarrativeRoomByCode: repo.findNarrativeRoomByCode.bind(repo),
+      listNarrativeRoomsByStatus: repo.listNarrativeRoomsByStatus.bind(repo),
+      updateNarrativeRoom: repo.updateNarrativeRoom.bind(repo),
+      addNarrativeMembership: repo.addNarrativeMembership.bind(repo),
+      updateNarrativeMembershipReady: repo.updateNarrativeMembershipReady.bind(repo),
+      removeNarrativeMembership: repo.removeNarrativeMembership.bind(repo),
+      findNarrativeMembership: repo.findNarrativeMembership.bind(repo),
+      listNarrativeMemberships: repo.listNarrativeMemberships.bind(repo),
+      upsertNarrativeSessionState: repo.upsertNarrativeSessionState.bind(repo),
+      findNarrativeSessionState: repo.findNarrativeSessionState.bind(repo),
+      createNarrativeRoleAssignment: repo.createNarrativeRoleAssignment.bind(repo),
+      listNarrativeRoleAssignments: repo.listNarrativeRoleAssignments.bind(repo),
+      findNarrativeRoleAssignment: repo.findNarrativeRoleAssignment.bind(repo),
+      createNarrativeMessage: repo.createNarrativeMessage.bind(repo),
+      listNarrativeMessages: repo.listNarrativeMessages.bind(repo),
+    };
+  };
+
+  const resolveMonetizationRepo = (): MonetizationRepoMethods | null => {
+    if (
+      !repo.listEntitlementsByUser ||
+      !repo.createEntitlement ||
+      !repo.listCosmeticUnlocksByUser ||
+      !repo.findUserRtcSettings ||
+      !repo.upsertUserRtcSettings
+    ) {
+      return null;
+    }
+
+    return {
+      listEntitlementsByUser: repo.listEntitlementsByUser.bind(repo),
+      createEntitlement: repo.createEntitlement.bind(repo),
+      listCosmeticUnlocksByUser: repo.listCosmeticUnlocksByUser.bind(repo),
+      findUserRtcSettings: repo.findUserRtcSettings.bind(repo),
+      upsertUserRtcSettings: repo.upsertUserRtcSettings.bind(repo),
+    };
+  };
+
+  const requireAuraFeature = (reply: FastifyReply): AuraRepoMethods | null => {
+    const auraRepo = resolveAuraRepo();
+    if (auraRepo) {
+      return auraRepo;
+    }
+
+    reply.code(503).send({ message: 'Aura feature is not available on this deployment' });
+    return null;
+  };
+
+  const requireNarrativeFeature = (reply: FastifyReply): NarrativeRepoMethods | null => {
+    const narrativeRepo = resolveNarrativeRepo();
+    if (narrativeRepo) {
+      return narrativeRepo;
+    }
+
+    reply.code(503).send({ message: 'Narrative Rooms feature is not available on this deployment' });
+    return null;
+  };
+
+  const requireMonetizationFeature = (reply: FastifyReply): MonetizationRepoMethods | null => {
+    const monetizationRepo = resolveMonetizationRepo();
+    if (monetizationRepo) {
+      return monetizationRepo;
+    }
+
+    reply.code(503).send({ message: 'Monetization feature is not available on this deployment' });
+    return null;
+  };
+
+  const listActiveEntitlementsByUser = async (userId: string, now: Date): Promise<EntitlementRecord[]> => {
+    const monetizationRepo = resolveMonetizationRepo();
+    if (!monetizationRepo) {
+      return [];
+    }
+
+    const entitlements = await monetizationRepo.listEntitlementsByUser(userId);
+    return entitlements.filter((entitlement) => isEntitlementActive(entitlement, now));
+  };
+
+  const getCurrentPlanForUser = async (userId: string, now: Date): Promise<Plan> => {
+    const activeEntitlements = await listActiveEntitlementsByUser(userId, now);
+    return resolveCurrentPlan(activeEntitlements, now);
+  };
+
+  const canUseFeature = async (input: {
+    userId: string;
+    featureKey: FeatureKey;
+    serverId?: string;
+    now?: Date;
+  }): Promise<boolean> => {
+    const now = input.now ?? new Date();
+    const plan = await getCurrentPlanForUser(input.userId, now);
+
+    if (USER_PLAN_FEATURES.has(input.featureKey)) {
+      return plan === 'PRO';
+    }
+
+    if (OWNER_SERVER_FEATURES.has(input.featureKey)) {
+      if (!input.serverId) {
+        return plan === 'PRO';
+      }
+
+      const server = await repo.findServerById(input.serverId);
+      if (!server || server.ownerUserId !== input.userId) {
+        return false;
+      }
+
+      return plan === 'PRO';
+    }
+
+    return false;
+  };
+
+  const getServerRtcPolicy = async (server: ServerRecord): Promise<{
+    ownerProPerksActive: boolean;
+    participantCap: number;
+    stageModeEnabled: boolean;
+    screenshareMinimumRole: ServerMemberRole;
+    recordingAllowed: false;
+  }> => {
+    const ownerPro = await canUseFeature({
+      userId: server.ownerUserId,
+      serverId: server.id,
+      featureKey: 'SERVER_OWNER_HIGH_RTC_CAP',
+    });
+
+    return {
+      ownerProPerksActive: ownerPro,
+      participantCap: ownerPro ? PRO_SERVER_RTC_PARTICIPANT_CAP : FREE_SERVER_RTC_PARTICIPANT_CAP,
+      stageModeEnabled: ownerPro ? server.stageModeEnabled : false,
+      screenshareMinimumRole: ownerPro ? server.screenshareMinimumRole : 'MEMBER',
+      recordingAllowed: false,
+    };
+  };
+
+  const getUserRtcSettings = async (userId: string): Promise<UserRtcSettings> => {
+    const monetizationRepo = resolveMonetizationRepo();
+    if (!monetizationRepo) {
+      return UserRtcSettingsSchema.parse(DEFAULT_RTC_SETTINGS);
+    }
+
+    const settings = await monetizationRepo.findUserRtcSettings(userId);
+    return serializeUserRtcSettings(settings);
+  };
+
+  const startOfUtcDay = (value: Date): Date => {
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0));
+  };
+
+  const getAuraSummaryForMask = async (maskId: string, now: Date = new Date()): Promise<AuraSummary | null> => {
+    const auraRepo = resolveAuraRepo();
+    if (!auraRepo) {
+      return null;
+    }
+
+    const existing = (await auraRepo.findMaskAuraByMaskId(maskId)) ?? (await auraRepo.upsertMaskAura(maskId));
+    const computed = computeAuraSummary(existing.score, existing.lastActivityAt, now);
+    const summary = serializeAuraSummary({
+      maskId,
+      score: computed.score,
+      effectiveScore: computed.effectiveScore,
+      tier: computed.tier,
+      tierName: computed.tierLabel,
+      color: computed.color,
+      nextTierAt: computed.nextTierAt,
+      percentToNext: computed.percentToNext,
+      lastActivityAt: existing.lastActivityAt.toISOString(),
+    });
+
+    auraSummaryCache.set(maskId, summary);
+
+    if (existing.tier !== computed.tier || existing.color !== computed.color) {
+      await auraRepo.updateMaskAura(maskId, {
+        tier: computed.tier,
+        color: computed.color,
+      });
+    }
+
+    return summary;
+  };
+
+  const getCachedSocketAura = (maskId: string): SocketAuraSummary | undefined => {
+    const summary = auraSummaryCache.get(maskId);
+    if (!summary) {
+      return undefined;
+    }
+
+    return toSocketAuraSummary(summary);
+  };
+
+  const hydrateAuraCacheForMaskIds = async (maskIds: readonly string[]) => {
+    const uniqueMaskIds = Array.from(new Set(maskIds.filter((candidate) => candidate.length > 0)));
+    await Promise.all(uniqueMaskIds.map((maskId) => getAuraSummaryForMask(maskId)));
+  };
+
+  const emitAuraUpdated = async (maskId: string, targetSockets?: Iterable<WebSocket>) => {
+    const summary = await getAuraSummaryForMask(maskId, new Date());
+    if (!summary) {
+      return;
+    }
+
+    const payload = {
+      type: 'AURA_UPDATED' as const,
+      data: {
+        maskId,
+        aura: toSocketAuraSummary(summary),
+      },
+    };
+
+    const sockets = targetSockets ? Array.from(targetSockets) : Array.from(sessions.keys());
+    for (const socket of sockets) {
+      sendSocketEvent(socket, payload);
+    }
+  };
+
+  const awardAuraEvent = async (
+    maskId: string,
+    kind: AuraEventKind,
+    meta?: Record<string, unknown>,
+  ): Promise<AuraSummary | null> => {
+    const auraRepo = resolveAuraRepo();
+    if (!auraRepo) {
+      return null;
+    }
+
+    const now = new Date();
+    const existing = (await auraRepo.findMaskAuraByMaskId(maskId)) ?? (await auraRepo.upsertMaskAura(maskId));
+    const previous = computeAuraSummary(existing.score, existing.lastActivityAt, now);
+    const oldSummary = serializeAuraSummary({
+      maskId,
+      score: previous.score,
+      effectiveScore: previous.effectiveScore,
+      tier: previous.tier,
+      tierName: previous.tierLabel,
+      color: previous.color,
+      nextTierAt: previous.nextTierAt,
+      percentToNext: previous.percentToNext,
+      lastActivityAt: existing.lastActivityAt.toISOString(),
+    });
+
+    const eventsToday = await auraRepo.countAuraEventsByMaskKindSince(maskId, kind, startOfUtcDay(now));
+    const eventsInRecentWindow =
+      kind === 'MESSAGE_SENT'
+        ? await auraRepo.countAuraEventsByMaskKindSince(maskId, kind, new Date(now.getTime() - AURA_MESSAGE_WINDOW_MS))
+        : 0;
+
+    let isUniqueActorForKindToday = true;
+    const actorMaskId = meta && typeof meta.actorMaskId === 'string' ? meta.actorMaskId : null;
+    if (actorMaskId && (kind === 'REACTION_RECEIVED' || kind === 'MENTIONED')) {
+      const events = await auraRepo.listAuraEventsByMask(maskId, {
+        kind,
+        since: startOfUtcDay(now),
+      });
+      isUniqueActorForKindToday = !events.some((event) => {
+        if (!event.meta || typeof event.meta !== 'object') {
+          return false;
+        }
+        return (event.meta as Record<string, unknown>).actorMaskId === actorMaskId;
+      });
+    }
+
+    const appliedWeight = computeAuraEventWeight({
+      kind,
+      eventsTodayForKind: eventsToday,
+      eventsInRecentWindow,
+      isUniqueActorForKindToday,
+    });
+
+    await auraRepo.createAuraEvent({
+      maskId,
+      kind,
+      weight: appliedWeight,
+      meta: {
+        ...(meta ?? {}),
+        isUniqueActorForKindToday:
+          kind === 'REACTION_RECEIVED' || kind === 'MENTIONED' ? isUniqueActorForKindToday : undefined,
+        eventsTodayForKind: eventsToday,
+        eventsInRecentWindow: kind === 'MESSAGE_SENT' ? eventsInRecentWindow : undefined,
+      },
+    });
+
+    if (appliedWeight <= 0) {
+      return oldSummary;
+    }
+
+    const nextScore = existing.score + appliedWeight;
+    const computed = computeAuraSummary(nextScore, now, now);
+    await auraRepo.updateMaskAura(maskId, {
+      score: nextScore,
+      lastActivityAt: now,
+      tier: computed.tier,
+      color: computed.color,
+    });
+
+    const summary = serializeAuraSummary({
+      maskId,
+      score: computed.score,
+      effectiveScore: computed.effectiveScore,
+      tier: computed.tier,
+      tierName: computed.tierLabel,
+      color: computed.color,
+      nextTierAt: computed.nextTierAt,
+      percentToNext: computed.percentToNext,
+      lastActivityAt: now.toISOString(),
+    });
+    auraSummaryCache.set(maskId, summary);
+
+    if (oldSummary.tier !== summary.tier || oldSummary.color !== summary.color) {
+      await emitAuraUpdated(maskId);
+    }
+
+    return summary;
+  };
+
+  const awardMentionedMasks = async (
+    actorMaskId: string,
+    body: string,
+    context: { contextType: string; contextId: string },
+  ) => {
+    if (!repo.findMaskById) {
+      return;
+    }
+
+    const mentionedMaskIds = extractMentionedMaskIds(body);
+    for (const mentionedMaskId of mentionedMaskIds) {
+      if (mentionedMaskId === actorMaskId) {
+        continue;
+      }
+
+      const targetMask = await repo.findMaskById(mentionedMaskId);
+      if (!targetMask) {
+        continue;
+      }
+
+      await awardAuraEvent(mentionedMaskId, 'MENTIONED', {
+        actorMaskId,
+        ...context,
+      });
+    }
+  };
+
+  const ensureNarrativeTemplates = async () => {
+    const narrativeRepo = resolveNarrativeRepo();
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const defaults: Array<{
+      slug: string;
+      name: string;
+      description: string;
+      minPlayers: number;
+      maxPlayers: number;
+      phases: NarrativePhase[];
+      roles: NarrativeRoleDefinition[];
+      requiresEntitlement: EntitlementKind | null;
+    }> = [
+      {
+        slug: 'masquerade-mystery-basic',
+        name: 'Masquerade Mystery (Basic)',
+        description: 'A social deduction baseline with briefing, clues, and reveal.',
+        minPlayers: 3,
+        maxPlayers: 8,
+        phases: [
+          {
+            key: 'briefing',
+            label: 'Briefing',
+            durationSec: 90,
+            allowTextChat: true,
+            allowVoiceJoin: true,
+            allowScreenshare: false,
+          },
+          {
+            key: 'investigation',
+            label: 'Investigation',
+            durationSec: 240,
+            allowTextChat: true,
+            allowVoiceJoin: true,
+            allowScreenshare: false,
+          },
+          {
+            key: 'reveal',
+            label: 'Reveal',
+            durationSec: 120,
+            allowTextChat: true,
+            allowVoiceJoin: true,
+            allowScreenshare: false,
+          },
+        ],
+        roles: [
+          { key: 'host', name: 'Host', description: 'Facilitates clues and timing.', count: 1 },
+          { key: 'sleuth', name: 'Sleuth', description: 'Interprets clues and pushes suspicion.', count: 7 },
+        ],
+        requiresEntitlement: null,
+      },
+      {
+        slug: 'council-vote-basic',
+        name: 'Council Vote (Basic)',
+        description: 'Debate-and-vote loop with short rounds and a final verdict.',
+        minPlayers: 4,
+        maxPlayers: 10,
+        phases: [
+          {
+            key: 'open',
+            label: 'Opening Statements',
+            durationSec: 120,
+            allowTextChat: true,
+            allowVoiceJoin: true,
+            allowScreenshare: false,
+          },
+          {
+            key: 'deliberate',
+            label: 'Deliberation',
+            durationSec: 180,
+            allowTextChat: true,
+            allowVoiceJoin: true,
+            allowScreenshare: false,
+          },
+          {
+            key: 'vote',
+            label: 'Vote',
+            durationSec: 60,
+            allowTextChat: true,
+            allowVoiceJoin: false,
+            allowScreenshare: false,
+          },
+        ],
+        roles: [
+          { key: 'speaker', name: 'Speaker', description: 'Presents proposals.', count: 2 },
+          { key: 'voter', name: 'Voter', description: 'Debates and casts decisions.', count: 8 },
+        ],
+        requiresEntitlement: null,
+      },
+      {
+        slug: 'speed-social-basic',
+        name: 'Speed Social (Basic)',
+        description: 'Fast rotating prompts with short social rounds.',
+        minPlayers: 2,
+        maxPlayers: 12,
+        phases: [
+          {
+            key: 'prompt',
+            label: 'Prompt',
+            durationSec: 45,
+            allowTextChat: true,
+            allowVoiceJoin: true,
+            allowScreenshare: false,
+          },
+          {
+            key: 'swap',
+            label: 'Switch Pairings',
+            durationSec: 30,
+            allowTextChat: false,
+            allowVoiceJoin: false,
+            allowScreenshare: false,
+          },
+          {
+            key: 'shareback',
+            label: 'Shareback',
+            durationSec: 90,
+            allowTextChat: true,
+            allowVoiceJoin: true,
+            allowScreenshare: false,
+          },
+        ],
+        roles: [
+          { key: 'connector', name: 'Connector', description: 'Keeps rotation moving.', count: 1 },
+          { key: 'participant', name: 'Participant', description: 'Engages in timed rounds.', count: 11 },
+        ],
+        requiresEntitlement: 'PRO',
+      },
+    ];
+
+    for (const template of defaults) {
+      await narrativeRepo.upsertNarrativeTemplateBySlug({
+        slug: template.slug,
+        name: template.name,
+        description: template.description,
+        minPlayers: template.minPlayers,
+        maxPlayers: template.maxPlayers,
+        phases: template.phases,
+        roles: template.roles,
+        requiresEntitlement: template.requiresEntitlement,
+      });
+    }
+  };
 
   type AuthorizedRtcContext =
     | {
@@ -774,6 +1661,8 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     displayName: string;
     color: string;
     avatarSeed: string;
+    auraTier?: 'DORMANT' | 'PRESENT' | 'RESONANT' | 'RADIANT' | 'ASCENDANT';
+    auraColor?: string;
     contextType: RtcContextType;
     contextId: string;
   }
@@ -812,6 +1701,8 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       displayName: z.string().min(1).max(40),
       color: z.string().min(1).max(32),
       avatarSeed: z.string().min(1).max(80),
+      auraTier: z.enum(['DORMANT', 'PRESENT', 'RESONANT', 'RADIANT', 'ASCENDANT']).optional(),
+      auraColor: z.string().min(1).max(32).optional(),
       contextType: z.enum(['SERVER_CHANNEL', 'DM_THREAD', 'EPHEMERAL_ROOM']),
       contextId: z.string().uuid(),
     });
@@ -866,6 +1757,16 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     return sockets;
   };
 
+  const getNarrativeRoomSockets = (roomId: string): Set<WebSocket> => {
+    let sockets = narrativeSockets.get(roomId);
+    if (!sockets) {
+      sockets = new Set<WebSocket>();
+      narrativeSockets.set(roomId, sockets);
+    }
+
+    return sockets;
+  };
+
   const broadcastToRoom = (roomId: string, event: ServerSocketEvent, excluded?: WebSocket) => {
     const sockets = roomSockets.get(roomId);
     if (!sockets) {
@@ -911,6 +1812,21 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }
   };
 
+  const broadcastToNarrativeRoom = (roomId: string, event: ServerSocketEvent, excluded?: WebSocket) => {
+    const sockets = narrativeSockets.get(roomId);
+    if (!sockets) {
+      return;
+    }
+
+    for (const socket of sockets) {
+      if (excluded && socket === excluded) {
+        continue;
+      }
+
+      sendSocketEvent(socket, event);
+    }
+  };
+
   const isMaskPresentInRoom = (roomId: string, maskId: string, excludedSocket?: WebSocket) => {
     const sockets = roomSockets.get(roomId);
     if (!sockets) {
@@ -924,6 +1840,26 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
 
       const session = sessions.get(socket);
       if (session?.joinedMember?.maskId === maskId) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const isMaskPresentInNarrativeRoom = (roomId: string, maskId: string, excludedSocket?: WebSocket) => {
+    const sockets = narrativeSockets.get(roomId);
+    if (!sockets) {
+      return false;
+    }
+
+    for (const socket of sockets) {
+      if (excludedSocket && socket === excludedSocket) {
+        continue;
+      }
+
+      const session = sessions.get(socket);
+      if (session?.joinedNarrativeRoomId === roomId && session.joinedNarrativeMaskId === maskId) {
         return true;
       }
     }
@@ -996,10 +1932,21 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }
 
     const messages = await repo.listRoomMessages(roomId);
+    const connectedMembers = getConnectedRoomMembers(roomId);
+    await hydrateAuraCacheForMaskIds([
+      ...connectedMembers.map((member) => member.maskId),
+      ...messages.map((message) => message.mask.id),
+    ]);
+
     return {
       room: serializeRoom(room),
-      members: getConnectedRoomMembers(roomId),
-      recentMessages: messages.map(serializeRealtimeMessage),
+      members: connectedMembers.map((member) => ({
+        ...member,
+        aura: getCachedSocketAura(member.maskId),
+      })),
+      recentMessages: messages.map((message) =>
+        serializeRealtimeMessage(message, getCachedSocketAura(message.mask.id)),
+      ),
       serverTime: new Date().toISOString(),
     };
   };
@@ -1035,11 +1982,19 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       repo.listDmMessages(thread.id),
     ]);
     const recentMessages = allMessages.slice(-MAX_RECENT_MESSAGES);
+    await hydrateAuraCacheForMaskIds([
+      ...participants.map((participant) => participant.activeMask.id),
+      ...recentMessages.map((message) => message.mask.id),
+    ]);
 
     return {
       threadId: thread.id,
-      participants: participants.map(serializeDmParticipant),
-      recentMessages: recentMessages.map(serializeDmMessage),
+      participants: participants.map((participant) =>
+        serializeDmParticipant(participant, getCachedSocketAura(participant.activeMask.id)),
+      ),
+      recentMessages: recentMessages.map((message) =>
+        serializeDmMessage(message, getCachedSocketAura(message.mask.id)),
+      ),
     };
   };
 
@@ -1070,10 +2025,24 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }
 
     const messages = await repo.listServerMessages(channelId);
+    const connectedMembers = getConnectedChannelMembers(channelId);
+    await hydrateAuraCacheForMaskIds([
+      ...connectedMembers.map((member) => member.mask.maskId),
+      ...messages.map((message) => message.mask.id),
+    ]);
+
     return {
       channel: serializeChannel(channel),
-      members: getConnectedChannelMembers(channelId),
-      recentMessages: messages.slice(-MAX_RECENT_MESSAGES).map(serializeServerMessage),
+      members: connectedMembers.map((member) => ({
+        ...member,
+        mask: {
+          ...member.mask,
+          aura: getCachedSocketAura(member.mask.maskId),
+        },
+      })),
+      recentMessages: messages
+        .slice(-MAX_RECENT_MESSAGES)
+        .map((message) => serializeServerMessage(message, getCachedSocketAura(message.mask.id))),
     };
   };
 
@@ -1095,6 +2064,312 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       type: 'CHANNEL_STATE',
       data: statePayload,
     });
+  };
+
+  const buildNarrativeRoomStatePayload = async (roomId: string) => {
+    const narrativeRepo = resolveNarrativeRepo();
+    if (!narrativeRepo) {
+      return null;
+    }
+
+    const [room, memberships, state] = await Promise.all([
+      narrativeRepo.findNarrativeRoomById(roomId),
+      narrativeRepo.listNarrativeMemberships(roomId, false),
+      narrativeRepo.findNarrativeSessionState(roomId),
+    ]);
+    if (!room) {
+      return null;
+    }
+
+    const template = await narrativeRepo.findNarrativeTemplateById(room.templateId);
+    if (!template) {
+      return null;
+    }
+
+    await hydrateAuraCacheForMaskIds(memberships.map((membership) => membership.mask.id));
+
+    return {
+      room: serializeNarrativeRoom(room),
+      template: serializeNarrativeTemplate(template),
+      members: memberships.map((membership) => ({
+        membership: serializeNarrativeMembership(membership),
+        mask: serializeSocketMaskIdentity(membership.mask, getCachedSocketAura(membership.mask.id)),
+      })),
+      state: state ? serializeNarrativeSessionState(state) : null,
+    };
+  };
+
+  const buildNarrativeSessionSummary = (
+    room: NarrativeRoomRecord,
+    state: NarrativeSessionStateRecord | null,
+    memberships: readonly NarrativeMembershipRecord[],
+    now: Date = new Date(),
+  ) => {
+    if (!state) {
+      return {
+        durationSec: 0,
+        participantCount: memberships.length,
+        endedAt: room.endedAt ? room.endedAt.toISOString() : null,
+      };
+    }
+
+    const endedAt = room.endedAt ?? now;
+    const durationSec = Math.max(0, Math.floor((endedAt.getTime() - state.startedAt.getTime()) / 1000));
+    return {
+      durationSec,
+      participantCount: memberships.length,
+      endedAt: room.endedAt ? room.endedAt.toISOString() : null,
+    };
+  };
+
+  const emitNarrativeRoomState = async (roomId: string, targetSocket?: WebSocket) => {
+    const statePayload = await buildNarrativeRoomStatePayload(roomId);
+    if (!statePayload) {
+      return;
+    }
+
+    if (targetSocket) {
+      sendSocketEvent(targetSocket, {
+        type: 'NARRATIVE_ROOM_STATE',
+        data: statePayload,
+      });
+      return;
+    }
+
+    broadcastToNarrativeRoom(roomId, {
+      type: 'NARRATIVE_ROOM_STATE',
+      data: statePayload,
+    });
+  };
+
+  const emitNarrativePhaseChanged = async (roomId: string) => {
+    const narrativeRepo = resolveNarrativeRepo();
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const room = await narrativeRepo.findNarrativeRoomById(roomId);
+    if (!room) {
+      return;
+    }
+
+    const [templateRecord, sessionState] = await Promise.all([
+      narrativeRepo.findNarrativeTemplateById(room.templateId),
+      narrativeRepo.findNarrativeSessionState(room.id),
+    ]);
+    if (!templateRecord || !sessionState) {
+      return;
+    }
+
+    const template = serializeNarrativeTemplate(templateRecord);
+    const phase = template.phases[sessionState.phaseIndex];
+    if (!phase) {
+      return;
+    }
+
+    broadcastToNarrativeRoom(room.id, {
+      type: 'NARRATIVE_PHASE_CHANGED',
+      data: {
+        roomId: room.id,
+        phaseIndex: sessionState.phaseIndex,
+        phase,
+        phaseEndsAt: sessionState.phaseEndsAt ? sessionState.phaseEndsAt.toISOString() : null,
+      },
+    });
+  };
+
+  const emitNarrativeSessionEnded = (roomId: string, endedAt: Date) => {
+    broadcastToNarrativeRoom(roomId, {
+      type: 'NARRATIVE_SESSION_ENDED',
+      data: {
+        roomId,
+        endedAt: endedAt.toISOString(),
+      },
+    });
+  };
+
+  const emitNarrativeRoleAssigned = async (
+    roomId: string,
+    maskId: string,
+    role: NarrativeRoleDefinition,
+    secretPayload: unknown,
+  ) => {
+    for (const session of sessions.values()) {
+      if (session.joinedNarrativeRoomId !== roomId || session.joinedNarrativeMaskId !== maskId) {
+        continue;
+      }
+
+      sendSocketEvent(session.socket, {
+        type: 'NARRATIVE_ROLE_ASSIGNED',
+        data: {
+          roomId,
+          roleKey: role.key,
+          role,
+          secretPayload: secretPayload ?? null,
+        },
+      });
+    }
+  };
+
+  const generateNarrativeRoomCode = () => randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase();
+
+  const transitionNarrativePhase = async (
+    roomId: string,
+    options?: {
+      actorMaskId?: string;
+      actorUserId?: string;
+      allowLobbyStart?: boolean;
+    },
+  ): Promise<{
+    room: NarrativeRoomRecord;
+    state: NarrativeSessionStateRecord | null;
+    sessionSummary: { durationSec: number; participantCount: number; endedAt: string | null };
+    revealedRoles?: NarrativeRoleAssignmentRecord[];
+  } | null> => {
+    const narrativeRepo = resolveNarrativeRepo();
+    if (!narrativeRepo) {
+      return null;
+    }
+
+    const room = await narrativeRepo.findNarrativeRoomById(roomId);
+    if (!room) {
+      return null;
+    }
+
+    const templateRecord = await narrativeRepo.findNarrativeTemplateById(room.templateId);
+    if (!templateRecord) {
+      return null;
+    }
+
+    const template = serializeNarrativeTemplate(templateRecord);
+    const memberships = await narrativeRepo.listNarrativeMemberships(room.id, false);
+    const activeMaskIds = memberships.map((membership) => membership.maskId);
+    if (activeMaskIds.length === 0) {
+      return null;
+    }
+
+    if (options?.actorMaskId && options.actorMaskId !== room.hostMaskId) {
+      return null;
+    }
+
+    if (options?.actorMaskId && options.actorUserId) {
+      const actorMask = await repo.findMaskByIdForUser(options.actorMaskId, options.actorUserId);
+      if (!actorMask) {
+        return null;
+      }
+    }
+
+    const now = new Date();
+    if (room.status === 'LOBBY') {
+      if (!options?.allowLobbyStart || !options.actorMaskId || !canActorStartNarrative(room.status, options.actorMaskId, room.hostMaskId)) {
+        return null;
+      }
+
+      if (activeMaskIds.length < template.minPlayers) {
+        return null;
+      }
+
+      const initialPhase = getNarrativePhaseTransition(template.phases, 0, now);
+      if (!initialPhase) {
+        return null;
+      }
+
+      const startedRoom = await narrativeRepo.updateNarrativeRoom(room.id, {
+        status: 'RUNNING',
+      });
+      const state = await narrativeRepo.upsertNarrativeSessionState({
+        roomId: room.id,
+        phaseIndex: initialPhase.phaseIndex,
+        phaseEndsAt: initialPhase.phaseEndsAt,
+        startedAt: now,
+      });
+
+      const assignments = assignNarrativeRoles(activeMaskIds, template.roles, createSeededRandom(room.seed));
+      for (const assignment of assignments) {
+        await narrativeRepo.createNarrativeRoleAssignment({
+          roomId: room.id,
+          maskId: assignment.maskId,
+          roleKey: assignment.role.key,
+          secretPayload: assignment.secretPayload ?? null,
+        });
+      }
+
+      await emitNarrativeRoomState(room.id);
+      await emitNarrativePhaseChanged(room.id);
+      for (const assignment of assignments) {
+        await emitNarrativeRoleAssigned(room.id, assignment.maskId, assignment.role, assignment.secretPayload);
+      }
+      await awardAuraEvent(room.hostMaskId, 'SESSION_HOSTED', {
+        roomId: room.id,
+        templateId: room.templateId,
+      });
+
+      return {
+        room: startedRoom,
+        state,
+        sessionSummary: buildNarrativeSessionSummary(startedRoom, state, memberships, now),
+      };
+    }
+
+    if (room.status !== 'RUNNING') {
+      const state = await narrativeRepo.findNarrativeSessionState(room.id);
+      const roleAssignments = room.status === 'ENDED' ? await narrativeRepo.listNarrativeRoleAssignments(room.id) : [];
+      return {
+        room,
+        state,
+        sessionSummary: buildNarrativeSessionSummary(room, state, memberships, now),
+        revealedRoles: roleAssignments,
+      };
+    }
+
+    if (options?.actorMaskId && !canActorAdvanceNarrative(room.status, options.actorMaskId, room.hostMaskId)) {
+      return null;
+    }
+
+    const state = await narrativeRepo.findNarrativeSessionState(room.id);
+    if (!state) {
+      return null;
+    }
+
+    if (!options?.actorMaskId && !shouldAutoAdvanceNarrativePhase(room.status, state.phaseEndsAt, now)) {
+      return {
+        room,
+        state,
+        sessionSummary: buildNarrativeSessionSummary(room, state, memberships, now),
+      };
+    }
+
+    const next = advanceNarrativePhase(template.phases, state.phaseIndex, now);
+    if (!next) {
+      const endedAt = new Date();
+      const endedRoom = await narrativeRepo.updateNarrativeRoom(room.id, {
+        status: 'ENDED',
+        endedAt,
+      });
+      const roleAssignments = await narrativeRepo.listNarrativeRoleAssignments(room.id);
+      emitNarrativeSessionEnded(room.id, endedAt);
+      await emitNarrativeRoomState(room.id);
+      return {
+        room: endedRoom,
+        state: null,
+        sessionSummary: buildNarrativeSessionSummary(endedRoom, state, memberships, endedAt),
+        revealedRoles: roleAssignments,
+      };
+    }
+
+    const updatedState = await narrativeRepo.upsertNarrativeSessionState({
+      roomId: room.id,
+      phaseIndex: next.phaseIndex,
+      phaseEndsAt: next.phaseEndsAt,
+      startedAt: state.startedAt,
+    });
+    await emitNarrativePhaseChanged(room.id);
+    await emitNarrativeRoomState(room.id);
+    return {
+      room,
+      state: updatedState,
+      sessionSummary: buildNarrativeSessionSummary(room, updatedState, memberships, now),
+    };
   };
 
   const emitModerationEvent = (
@@ -1150,6 +2425,40 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         data: {
           roomId,
           member,
+        },
+      });
+    }
+  };
+
+  const leaveNarrativeRoom = (session: SocketSession, shouldBroadcast = true) => {
+    const roomId = session.joinedNarrativeRoomId;
+    const maskId = session.joinedNarrativeMaskId;
+    if (!roomId || !maskId) {
+      return;
+    }
+
+    const sockets = narrativeSockets.get(roomId);
+    if (sockets) {
+      sockets.delete(session.socket);
+      if (sockets.size === 0) {
+        narrativeSockets.delete(roomId);
+      }
+    }
+
+    session.joinedNarrativeRoomId = undefined;
+    session.joinedNarrativeMaskId = undefined;
+
+    if (!shouldBroadcast) {
+      return;
+    }
+
+    const stillPresent = isMaskPresentInNarrativeRoom(roomId, maskId);
+    if (!stillPresent) {
+      broadcastToNarrativeRoom(roomId, {
+        type: 'NARRATIVE_MEMBER_LEFT',
+        data: {
+          roomId,
+          maskId,
         },
       });
     }
@@ -1610,12 +2919,19 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       return null;
     }
 
+    await hydrateAuraCacheForMaskIds([
+      ...participants.map((participant) => participant.activeMask.id),
+      ...messages.map((message) => message.mask.id),
+    ]);
+
     return {
       thread: serializeDmThread(thread),
       peer: serializeFriendUser(peer),
-      participants: participants.map(serializeDmParticipant),
-      messages: messages.map(serializeDmMessage),
-      activeMask: serializeSocketMaskIdentity(meParticipant.activeMask),
+      participants: participants.map((participant) =>
+        serializeDmParticipant(participant, getCachedSocketAura(participant.activeMask.id)),
+      ),
+      messages: messages.map((message) => serializeDmMessage(message, getCachedSocketAura(message.mask.id))),
+      activeMask: serializeSocketMaskIdentity(meParticipant.activeMask, getCachedSocketAura(meParticipant.activeMask.id)),
     };
   };
 
@@ -1832,12 +3148,15 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     canPublish: boolean;
   }) => {
     const identity = `${input.userId}:${input.mask.id}:${randomUUID().slice(0, 8)}`;
+    const auraSummary = await getAuraSummaryForMask(input.mask.id, new Date());
     const metadata = JSON.stringify({
       userId: input.userId,
       maskId: input.mask.id,
       displayName: input.mask.displayName,
       color: input.mask.color,
       avatarSeed: input.mask.avatarSeed,
+      auraTier: auraSummary?.tier,
+      auraColor: auraSummary?.color,
       contextType: input.contextType,
       contextId: input.contextId,
     } satisfies RtcParticipantMetadata);
@@ -1858,6 +3177,36 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
 
     return accessToken.toJwt();
   };
+
+  await ensureNarrativeTemplates();
+
+  const narrativeRepoForTick = resolveNarrativeRepo();
+  if (narrativeRepoForTick) {
+    narrativeTickTimer = setInterval(() => {
+      void (async () => {
+        try {
+          const runningRooms = await narrativeRepoForTick.listNarrativeRoomsByStatus('RUNNING');
+          for (const runningRoom of runningRooms) {
+            await transitionNarrativePhase(runningRoom.id);
+          }
+        } catch (error) {
+          app.log.warn({ error }, 'narrative_tick_failed');
+        }
+      })();
+    }, NARRATIVE_TICK_INTERVAL_MS);
+  }
+
+  app.addHook('onClose', async () => {
+    if (narrativeTickTimer) {
+      clearInterval(narrativeTickTimer);
+      narrativeTickTimer = null;
+    }
+
+    for (const timer of roomExpiryTimers.values()) {
+      clearTimeout(timer);
+    }
+    roomExpiryTimers.clear();
+  });
 
   app.get('/api/health', { config: { rateLimit: false } }, async (_, reply) => {
     let dbOk = false;
@@ -2002,9 +3351,153 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }
 
     const masks = await repo.listMasksByUser(userId);
+    const monetizationRepo = resolveMonetizationRepo();
+    const auraSummaries = await Promise.all(
+      masks.map((mask) => getAuraSummaryForMask(mask.id, new Date())),
+    );
+    const auraByMaskId = new Map(
+      auraSummaries
+        .filter((summary): summary is AuraSummary => summary !== null)
+        .map((summary) => [summary.maskId, summary]),
+    );
+    const now = new Date();
+    const [entitlements, cosmeticUnlocks, rtcSettings] = await Promise.all([
+      monetizationRepo ? monetizationRepo.listEntitlementsByUser(userId) : Promise.resolve([]),
+      monetizationRepo ? monetizationRepo.listCosmeticUnlocksByUser(userId) : Promise.resolve([]),
+      getUserRtcSettings(userId),
+    ]);
+    const currentPlan = resolveCurrentPlan(entitlements, now);
+    const featureAccess = await Promise.all(
+      FeatureKeySchema.options.map(async (feature) => ({
+        feature,
+        enabled: await canUseFeature({ userId, featureKey: feature, now }),
+      })),
+    );
+
     return MeResponseSchema.parse({
       user: serializeUser(user),
-      masks: masks.map(serializeMask),
+      masks: masks.map((mask) => serializeMask(mask, auraByMaskId.get(mask.id) ?? null)),
+      entitlements: entitlements.map(serializeEntitlement),
+      cosmeticUnlocks: cosmeticUnlocks.map(serializeCosmeticUnlock),
+      currentPlan,
+      rtcSettings,
+      featureAccess,
+    });
+  });
+
+  app.patch('/settings/rtc', { preHandler: [authenticate] }, async (request, reply) => {
+    const body = parseOrReply(UpdateRtcSettingsRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const monetizationRepo = requireMonetizationFeature(reply);
+    if (!monetizationRepo) {
+      return;
+    }
+
+    const userId = request.user.sub;
+    const currentPlan = await getCurrentPlanForUser(userId, new Date());
+    const restrictedFields: Array<keyof typeof body> = [
+      'advancedNoiseSuppression',
+      'pushToTalkMode',
+      'pushToTalkHotkey',
+      'multiPinEnabled',
+      'pictureInPictureEnabled',
+      'defaultScreenshareFps',
+      'defaultScreenshareQuality',
+      'cursorHighlight',
+    ];
+
+    const touchedRestrictedField = restrictedFields.some((field) => body[field] !== undefined);
+    if (touchedRestrictedField && currentPlan !== 'PRO') {
+      reply.code(403);
+      return { message: 'Masq Pro is required for advanced RTC controls' };
+    }
+
+    if (
+      body.selectedAuraStyle &&
+      body.selectedAuraStyle !== 'AURA_STYLE_BASE' &&
+      !(await canUseFeature({ userId, featureKey: 'PRO_AURA_STYLES' }))
+    ) {
+      reply.code(403);
+      return { message: 'Masq Pro is required for premium aura styles' };
+    }
+
+    const updated = await monetizationRepo.upsertUserRtcSettings(userId, body);
+    return UpdateRtcSettingsResponseSchema.parse({
+      success: true,
+      rtcSettings: serializeUserRtcSettings(updated),
+    });
+  });
+
+  app.post('/billing/stripe/webhook', async (request, reply) => {
+    if (!env.ENABLE_STRIPE_WEBHOOK) {
+      reply.code(404);
+      return { message: 'Not found' };
+    }
+
+    const secret = env.STRIPE_WEBHOOK_SECRET;
+    if (!secret) {
+      reply.code(503);
+      return { message: 'Stripe webhook secret not configured' };
+    }
+
+    const signatureHeader = request.headers['stripe-signature'];
+    if (!signatureHeader || typeof signatureHeader !== 'string') {
+      reply.code(400);
+      return { message: 'Missing Stripe signature header' };
+    }
+
+    const bodyPayload =
+      typeof request.body === 'string' ? request.body : JSON.stringify(request.body ?? {});
+    if (!verifyStripeWebhookSignature(bodyPayload, signatureHeader, secret)) {
+      reply.code(400);
+      return { message: 'Invalid Stripe signature' };
+    }
+
+    return StripeWebhookResponseSchema.parse({
+      received: true,
+    });
+  });
+
+  app.post('/dev/entitlements/grant', { preHandler: [authenticate] }, async (request, reply) => {
+    if (!env.ENABLE_DEV_ENTITLEMENTS) {
+      reply.code(404);
+      return { message: 'Not found' };
+    }
+
+    const body = parseOrReply(DevGrantEntitlementRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const monetizationRepo = requireMonetizationFeature(reply);
+    if (!monetizationRepo) {
+      return;
+    }
+
+    const actor = await repo.findUserById(request.user.sub);
+    if (!actor) {
+      reply.code(401);
+      return { message: 'Unauthorized' };
+    }
+
+    const targetUser = await repo.findUserById(body.userId);
+    if (!targetUser) {
+      reply.code(404);
+      return { message: 'Target user not found' };
+    }
+
+    const entitlement = await monetizationRepo.createEntitlement({
+      userId: body.userId,
+      kind: body.kind,
+      source: 'DEV_MANUAL',
+      expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+    });
+
+    return DevGrantEntitlementResponseSchema.parse({
+      entitlement: serializeEntitlement(entitlement),
     });
   });
 
@@ -2398,11 +3891,20 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         }
 
         const lastMessage = messages[messages.length - 1] ?? null;
+        await hydrateAuraCacheForMaskIds([
+          meParticipant.activeMask.id,
+          ...(lastMessage ? [lastMessage.mask.id] : []),
+        ]);
         return {
           thread: serializeDmThread(thread),
           peer: serializeFriendUser(peer),
-          activeMask: serializeSocketMaskIdentity(meParticipant.activeMask),
-          lastMessage: lastMessage ? serializeDmMessage(lastMessage) : null,
+          activeMask: serializeSocketMaskIdentity(
+            meParticipant.activeMask,
+            getCachedSocketAura(meParticipant.activeMask.id),
+          ),
+          lastMessage: lastMessage
+            ? serializeDmMessage(lastMessage, getCachedSocketAura(lastMessage.mask.id))
+            : null,
         };
       }),
     );
@@ -2503,10 +4005,11 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     }
 
     await emitDmState(thread.id);
+    await hydrateAuraCacheForMaskIds([updated.activeMask.id]);
 
     return SetDmMaskResponseSchema.parse({
       success: true,
-      activeMask: serializeSocketMaskIdentity(updated.activeMask),
+      activeMask: serializeSocketMaskIdentity(updated.activeMask, getCachedSocketAura(updated.activeMask.id)),
     });
   });
 
@@ -2533,6 +4036,17 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       return { message: authorizedContext.message };
     }
 
+    let participantCap: number | undefined;
+    let canScreenshare = true;
+    if (authorizedContext.value.contextType === 'SERVER_CHANNEL') {
+      const rtcPolicy = await getServerRtcPolicy(authorizedContext.value.server);
+      participantCap = rtcPolicy.participantCap;
+      canScreenshare = isServerRoleAtLeast(
+        authorizedContext.value.member.role,
+        rtcPolicy.screenshareMinimumRole,
+      );
+    }
+
     let session = await repo.findActiveVoiceSessionByContext(body.contextType, body.contextId);
     if (!session) {
       session = await repo.createVoiceSession({
@@ -2550,6 +4064,19 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
           participant.maskId === authorizedContext.value.mask.id &&
           participant.isServerMuted,
       )?.isServerMuted ?? false;
+    const alreadyPresent = existingParticipants.some(
+      (participant) =>
+        participant.userId === userId && participant.maskId === authorizedContext.value.mask.id,
+    );
+    const projectedParticipantCount = alreadyPresent
+      ? existingParticipants.length
+      : existingParticipants.length + 1;
+    if (participantCap !== undefined && projectedParticipantCount > participantCap) {
+      reply.code(409);
+      return {
+        message: `Participant cap reached for this server call (${participantCap})`,
+      };
+    }
 
     const joinedAt = new Date();
     await repo.markVoiceParticipantsLeft(session.id, userId, joinedAt);
@@ -2558,6 +4085,11 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       userId,
       maskId: authorizedContext.value.mask.id,
       isServerMuted: existingMuted,
+    });
+    await awardAuraEvent(authorizedContext.value.mask.id, 'VOICE_MINUTES', {
+      contextType: body.contextType,
+      contextId: body.contextId,
+      minutes: 1,
     });
 
     const participants = await repo.listActiveVoiceParticipants(session.id);
@@ -2583,6 +4115,8 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       livekitRoomName: session.livekitRoomName,
       token,
       livekitUrl: livekit.livekitUrl,
+      participantCap,
+      canScreenshare,
       participants: participants.map(serializeVoiceParticipant),
     });
   });
@@ -2969,12 +4503,14 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       repo.listServerChannels(server.id),
       repo.listServerMembers(server.id),
     ]);
+    const rtcPolicy = await getServerRtcPolicy(server);
 
     return GetServerResponseSchema.parse({
       server: serializeServer(server),
       channels: channels.map(serializeChannel),
       members: members.map(serializeServerMember),
       myPermissions: getServerPermissionsForMember(membership),
+      rtcPolicy,
     });
   });
 
@@ -3030,13 +4566,65 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       }
 
       const mask = await resolveEffectiveChannelMask(repo, updatedServer, joinedChannel, joinedMembership);
-      session.joinedChannelMember = serializeServerChannelMember(joinedMembership, mask);
+      await hydrateAuraCacheForMaskIds([mask.id]);
+      session.joinedChannelMember = serializeServerChannelMember(
+        joinedMembership,
+        mask,
+        getCachedSocketAura(mask.id),
+      );
       await emitChannelState(joinedChannel.id);
     }
 
     return UpdateServerSettingsResponseSchema.parse({
       success: true,
       server: serializeServer(updatedServer),
+    });
+  });
+
+  app.patch('/servers/:serverId/rtc-policy', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(ServerParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(UpdateServerRtcPolicyRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    if (!repo.updateServerRtcPolicy) {
+      reply.code(503);
+      return { message: 'RTC policy updates are not available on this deployment' };
+    }
+
+    const [server, membership] = await Promise.all([
+      repo.findServerById(params.serverId),
+      repo.findServerMember(params.serverId, request.user.sub),
+    ]);
+    if (!server) {
+      reply.code(404);
+      return { message: 'Server not found' };
+    }
+
+    if (!membership) {
+      reply.code(403);
+      return { message: 'You are not a member of this server' };
+    }
+
+    if (!hasServerPermission(membership, 'ManageMembers')) {
+      reply.code(403);
+      return { message: 'Missing ManageMembers permission' };
+    }
+
+    const updatedServer = await repo.updateServerRtcPolicy(params.serverId, {
+      stageModeEnabled: body.stageModeEnabled,
+      screenshareMinimumRole: body.screenshareMinimumRole,
+    });
+    const rtcPolicy = await getServerRtcPolicy(updatedServer);
+
+    return UpdateServerRtcPolicyResponseSchema.parse({
+      success: true,
+      rtcPolicy,
     });
   });
 
@@ -3276,7 +4864,12 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         continue;
       }
 
-      socketSession.joinedChannelMember = serializeServerChannelMember(updated);
+      await hydrateAuraCacheForMaskIds([updated.serverMask.id]);
+      socketSession.joinedChannelMember = serializeServerChannelMember(
+        updated,
+        updated.serverMask,
+        getCachedSocketAura(updated.serverMask.id),
+      );
       await emitChannelState(joinedChannel.id);
     }
 
@@ -3494,7 +5087,12 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       }
 
       const effectiveMask = await resolveEffectiveChannelMask(repo, server, joinedChannel, updated);
-      socketSession.joinedChannelMember = serializeServerChannelMember(updated, effectiveMask);
+      await hydrateAuraCacheForMaskIds([effectiveMask.id]);
+      socketSession.joinedChannelMember = serializeServerChannelMember(
+        updated,
+        effectiveMask,
+        getCachedSocketAura(effectiveMask.id),
+      );
       await emitChannelState(joinedChannel.id);
     }
 
@@ -3558,13 +5156,18 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         continue;
       }
 
-      session.joinedChannelMember = serializeServerChannelMember(membership, mask);
+      await hydrateAuraCacheForMaskIds([mask.id]);
+      session.joinedChannelMember = serializeServerChannelMember(
+        membership,
+        mask,
+        getCachedSocketAura(mask.id),
+      );
       await emitChannelState(channel.id);
     }
 
     return SetChannelMaskResponseSchema.parse({
       success: true,
-      mask: serializeSocketMaskIdentity(mask),
+      mask: serializeSocketMaskIdentity(mask, getCachedSocketAura(mask.id)),
     });
   });
 
@@ -3648,8 +5251,10 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       await repo.updateUserDefaultMask(userId, mask.id);
     }
 
+    const auraSummary = await getAuraSummaryForMask(mask.id, new Date());
+
     reply.code(201);
-    return CreateMaskResponseSchema.parse({ mask: serializeMask(mask) });
+    return CreateMaskResponseSchema.parse({ mask: serializeMask(mask, auraSummary) });
   });
 
   app.post('/masks/:maskId/avatar', { preHandler: [authenticate] }, async (request, reply) => {
@@ -3709,9 +5314,43 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       }
     }
 
+    const auraSummary = await getAuraSummaryForMask(updatedMask.id, new Date());
+
     return SetMaskAvatarResponseSchema.parse({
       success: true,
-      mask: serializeMask(updatedMask),
+      mask: serializeMask(updatedMask, auraSummary),
+    });
+  });
+
+  app.get('/masks/:maskId/aura', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(MaskAuraParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const auraRepo = requireAuraFeature(reply);
+    if (!auraRepo) {
+      return;
+    }
+
+    const mask = await repo.findMaskByIdForUser(params.maskId, request.user.sub);
+    if (!mask) {
+      reply.code(403);
+      return { message: 'Mask does not belong to the authenticated user' };
+    }
+
+    const [summary, events] = await Promise.all([
+      getAuraSummaryForMask(mask.id, new Date()),
+      auraRepo.listAuraEventsByMask(mask.id, { limit: 10 }),
+    ]);
+    if (!summary) {
+      reply.code(500);
+      return { message: 'Aura state is unavailable for this mask' };
+    }
+
+    return GetMaskAuraResponseSchema.parse({
+      aura: summary,
+      recentEvents: events.map(serializeAuraEvent),
     });
   });
 
@@ -4013,6 +5652,500 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
     });
   });
 
+  app.get('/narrative/templates', { preHandler: [authenticate] }, async (_request, reply) => {
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const templates = await narrativeRepo.listNarrativeTemplates();
+    return ListNarrativeTemplatesResponseSchema.parse({
+      templates: templates.map(serializeNarrativeTemplate),
+    });
+  });
+
+  app.post('/narrative/rooms', { preHandler: [authenticate] }, async (request, reply) => {
+    const body = parseOrReply(CreateNarrativeRoomRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const hostMask = await repo.findMaskByIdForUser(body.hostMaskId, request.user.sub);
+    if (!hostMask) {
+      reply.code(403);
+      return { message: 'Host mask does not belong to the authenticated user' };
+    }
+
+    const template = await narrativeRepo.findNarrativeTemplateById(body.templateId);
+    if (!template) {
+      reply.code(404);
+      return { message: 'Narrative template not found' };
+    }
+
+    let createdRoom: NarrativeRoomRecord | null = null;
+    for (let attempt = 0; attempt < 8 && !createdRoom; attempt += 1) {
+      const code = generateNarrativeRoomCode();
+      const seed = randomBytes(4).readUInt32BE(0);
+      try {
+        createdRoom = await narrativeRepo.createNarrativeRoom({
+          templateId: body.templateId,
+          hostMaskId: hostMask.id,
+          code,
+          seed,
+        });
+      } catch (error) {
+        const errorCode =
+          typeof error === 'object' && error !== null && 'code' in error
+            ? String((error as { code?: unknown }).code)
+            : '';
+        if (errorCode === 'P2002') {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!createdRoom) {
+      reply.code(500);
+      return { message: 'Unable to generate a unique narrative room code' };
+    }
+
+    await narrativeRepo.addNarrativeMembership({
+      roomId: createdRoom.id,
+      maskId: hostMask.id,
+      isReady: true,
+    });
+    await hydrateAuraCacheForMaskIds([hostMask.id]);
+
+    reply.code(201);
+    return CreateNarrativeRoomResponseSchema.parse({
+      room: serializeNarrativeRoom(createdRoom),
+    });
+  });
+
+  app.post('/narrative/rooms/join', { preHandler: [authenticate] }, async (request, reply) => {
+    const body = parseOrReply(JoinNarrativeRoomRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const mask = await repo.findMaskByIdForUser(body.maskId, request.user.sub);
+    if (!mask) {
+      reply.code(403);
+      return { message: 'Mask does not belong to the authenticated user' };
+    }
+
+    const room = await narrativeRepo.findNarrativeRoomByCode(body.code.trim().toUpperCase());
+    if (!room) {
+      reply.code(404);
+      return { message: 'Narrative room not found' };
+    }
+
+    if (room.status === 'ENDED') {
+      reply.code(409);
+      return { message: 'Narrative room has already ended' };
+    }
+
+    if (room.status !== 'LOBBY') {
+      reply.code(409);
+      return { message: 'Narrative session is already in progress' };
+    }
+
+    const template = await narrativeRepo.findNarrativeTemplateById(room.templateId);
+    if (!template) {
+      reply.code(404);
+      return { message: 'Narrative template not found' };
+    }
+
+    const memberships = await narrativeRepo.listNarrativeMemberships(room.id, false);
+    const existingMembership = memberships.find((membership) => membership.maskId === mask.id) ?? null;
+    if (!existingMembership && memberships.length >= template.maxPlayers) {
+      reply.code(409);
+      return { message: 'Narrative room is full' };
+    }
+
+    const joinedMembership = await narrativeRepo.addNarrativeMembership({
+      roomId: room.id,
+      maskId: mask.id,
+      isReady: false,
+    });
+    await hydrateAuraCacheForMaskIds([mask.id]);
+
+    broadcastToNarrativeRoom(room.id, {
+      type: 'NARRATIVE_MEMBER_JOINED',
+      data: {
+        roomId: room.id,
+        member: {
+          membership: serializeNarrativeMembership(joinedMembership),
+          mask: serializeSocketMaskIdentity(mask, getCachedSocketAura(mask.id)),
+        },
+      },
+    });
+    await emitNarrativeRoomState(room.id);
+    await awardAuraEvent(mask.id, 'SESSION_JOINED', {
+      roomId: room.id,
+      templateId: room.templateId,
+    });
+
+    return JoinNarrativeRoomResponseSchema.parse({
+      success: true,
+      roomId: room.id,
+    });
+  });
+
+  app.post('/narrative/rooms/:roomId/leave', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(NarrativeRoomParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(LeaveNarrativeRoomRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const mask = await repo.findMaskByIdForUser(body.maskId, request.user.sub);
+    if (!mask) {
+      reply.code(403);
+      return { message: 'Mask does not belong to the authenticated user' };
+    }
+
+    const membership = await narrativeRepo.findNarrativeMembership(params.roomId, mask.id);
+    if (!membership) {
+      reply.code(404);
+      return { message: 'Mask is not an active member of this narrative room' };
+    }
+
+    await narrativeRepo.removeNarrativeMembership(params.roomId, mask.id, new Date());
+    broadcastToNarrativeRoom(params.roomId, {
+      type: 'NARRATIVE_MEMBER_LEFT',
+      data: {
+        roomId: params.roomId,
+        maskId: mask.id,
+      },
+    });
+    await emitNarrativeRoomState(params.roomId);
+
+    return LeaveNarrativeRoomResponseSchema.parse({
+      success: true,
+    });
+  });
+
+  app.post('/narrative/rooms/:roomId/ready', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(NarrativeRoomParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(SetNarrativeReadyRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const [mask, room] = await Promise.all([
+      repo.findMaskByIdForUser(body.maskId, request.user.sub),
+      narrativeRepo.findNarrativeRoomById(params.roomId),
+    ]);
+    if (!mask) {
+      reply.code(403);
+      return { message: 'Mask does not belong to the authenticated user' };
+    }
+
+    if (!room) {
+      reply.code(404);
+      return { message: 'Narrative room not found' };
+    }
+
+    if (room.status !== 'LOBBY') {
+      reply.code(409);
+      return { message: 'Readiness can only be changed in lobby' };
+    }
+
+    const membership = await narrativeRepo.findNarrativeMembership(room.id, mask.id);
+    if (!membership) {
+      reply.code(404);
+      return { message: 'Mask is not an active member of this narrative room' };
+    }
+
+    const updatedMembership = await narrativeRepo.updateNarrativeMembershipReady(room.id, mask.id, body.ready);
+    await emitNarrativeRoomState(room.id);
+
+    return SetNarrativeReadyResponseSchema.parse({
+      success: true,
+      membership: serializeNarrativeMembership(updatedMembership),
+    });
+  });
+
+  app.post('/narrative/rooms/:roomId/start', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(NarrativeRoomParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(NarrativeActorRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const room = await narrativeRepo.findNarrativeRoomById(params.roomId);
+    if (!room) {
+      reply.code(404);
+      return { message: 'Narrative room not found' };
+    }
+
+    if (room.status !== 'LOBBY') {
+      reply.code(409);
+      return { message: 'Narrative room is already running or ended' };
+    }
+
+    if (body.actorMaskId !== room.hostMaskId) {
+      reply.code(403);
+      return { message: 'Only the host can start this narrative room' };
+    }
+
+    const transitioned = await transitionNarrativePhase(room.id, {
+      actorMaskId: body.actorMaskId,
+      actorUserId: request.user.sub,
+      allowLobbyStart: true,
+    });
+    if (!transitioned) {
+      reply.code(400);
+      return { message: 'Unable to start narrative room session' };
+    }
+
+    return NarrativeActionResponseSchema.parse({
+      success: true,
+      room: serializeNarrativeRoom(transitioned.room),
+      state: transitioned.state ? serializeNarrativeSessionState(transitioned.state) : null,
+      revealedRoles: transitioned.revealedRoles?.map(serializeNarrativeRoleAssignment),
+      sessionSummary: transitioned.sessionSummary,
+    });
+  });
+
+  app.post('/narrative/rooms/:roomId/advance', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(NarrativeRoomParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(NarrativeActorRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const room = await narrativeRepo.findNarrativeRoomById(params.roomId);
+    if (!room) {
+      reply.code(404);
+      return { message: 'Narrative room not found' };
+    }
+
+    if (room.status !== 'RUNNING') {
+      reply.code(409);
+      return { message: 'Narrative room is not currently running' };
+    }
+
+    if (body.actorMaskId !== room.hostMaskId) {
+      reply.code(403);
+      return { message: 'Only the host can advance phases' };
+    }
+
+    const transitioned = await transitionNarrativePhase(room.id, {
+      actorMaskId: body.actorMaskId,
+      actorUserId: request.user.sub,
+    });
+    if (!transitioned) {
+      reply.code(400);
+      return { message: 'Unable to advance narrative phase' };
+    }
+
+    return NarrativeActionResponseSchema.parse({
+      success: true,
+      room: serializeNarrativeRoom(transitioned.room),
+      state: transitioned.state ? serializeNarrativeSessionState(transitioned.state) : null,
+      revealedRoles: transitioned.revealedRoles?.map(serializeNarrativeRoleAssignment),
+      sessionSummary: transitioned.sessionSummary,
+    });
+  });
+
+  app.get('/narrative/rooms/:roomId', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(NarrativeRoomParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const room = await narrativeRepo.findNarrativeRoomById(params.roomId);
+    if (!room) {
+      reply.code(404);
+      return { message: 'Narrative room not found' };
+    }
+
+    const userMasks = await repo.listMasksByUser(request.user.sub);
+    const memberships = await narrativeRepo.listNarrativeMemberships(room.id, false);
+    const hasAccess = memberships.some((membership) => userMasks.some((mask) => mask.id === membership.maskId));
+    if (!hasAccess) {
+      reply.code(403);
+      return { message: 'Not a member of this narrative room' };
+    }
+
+    const statePayload = await buildNarrativeRoomStatePayload(room.id);
+    if (!statePayload) {
+      reply.code(404);
+      return { message: 'Narrative room state unavailable' };
+    }
+
+    const stateRecord = await narrativeRepo.findNarrativeSessionState(room.id);
+
+    let myRole: NarrativeRoleAssignmentRecord | null = null;
+    for (const mask of userMasks) {
+      const candidate = await narrativeRepo.findNarrativeRoleAssignment(room.id, mask.id);
+      if (candidate) {
+        myRole = candidate;
+        break;
+      }
+    }
+
+    const recentMessages = await narrativeRepo.listNarrativeMessages(room.id, MAX_NARRATIVE_RECENT_MESSAGES);
+    await hydrateAuraCacheForMaskIds(recentMessages.map((message) => message.mask.id));
+    const revealedRoles =
+      room.status === 'ENDED'
+        ? (await narrativeRepo.listNarrativeRoleAssignments(room.id)).map(serializeNarrativeRoleAssignment)
+        : [];
+    const sessionSummary = buildNarrativeSessionSummary(room, stateRecord, memberships, new Date());
+
+    return GetNarrativeRoomResponseSchema.parse({
+      room: statePayload.room,
+      template: statePayload.template,
+      members: statePayload.members,
+      state: statePayload.state,
+      myRole: myRole ? serializeNarrativeRoleAssignment(myRole) : null,
+      revealedRoles,
+      recentMessages: recentMessages.map((message) =>
+        serializeNarrativeMessage(message, getCachedSocketAura(message.mask.id)),
+      ),
+      sessionSummary,
+    });
+  });
+
+  app.post('/narrative/rooms/:roomId/message', { preHandler: [authenticate] }, async (request, reply) => {
+    const params = parseOrReply(NarrativeRoomParamsSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const body = parseOrReply(SendNarrativeMessageRequestSchema, request.body, reply);
+    if (!body) {
+      return;
+    }
+
+    const narrativeRepo = requireNarrativeFeature(reply);
+    if (!narrativeRepo) {
+      return;
+    }
+
+    const mask = await repo.findMaskByIdForUser(body.maskId, request.user.sub);
+    if (!mask) {
+      reply.code(403);
+      return { message: 'Mask does not belong to the authenticated user' };
+    }
+
+    const room = await narrativeRepo.findNarrativeRoomById(params.roomId);
+    if (!room) {
+      reply.code(404);
+      return { message: 'Narrative room not found' };
+    }
+
+    if (room.status === 'ENDED') {
+      reply.code(409);
+      return { message: 'Narrative room has ended' };
+    }
+
+    const membership = await narrativeRepo.findNarrativeMembership(room.id, mask.id);
+    if (!membership) {
+      reply.code(403);
+      return { message: 'Mask is not an active member of this narrative room' };
+    }
+
+    const templateRecord = await narrativeRepo.findNarrativeTemplateById(room.templateId);
+    const state = await narrativeRepo.findNarrativeSessionState(room.id);
+    if (templateRecord && state) {
+      const template = serializeNarrativeTemplate(templateRecord);
+      const activePhase = template.phases[state.phaseIndex];
+      if (activePhase && activePhase.allowTextChat === false) {
+        reply.code(403);
+        return { message: 'Chat is disabled during the current phase' };
+      }
+    }
+
+    const sanitizedBody = sanitizeMessageBody(body.body);
+    if (!sanitizedBody) {
+      reply.code(400);
+      return { message: 'Message is empty after sanitization' };
+    }
+
+    const createdMessage = await narrativeRepo.createNarrativeMessage({
+      roomId: room.id,
+      maskId: mask.id,
+      body: sanitizedBody,
+    });
+    await awardAuraEvent(mask.id, 'MESSAGE_SENT', {
+      contextType: 'NARRATIVE_ROOM',
+      contextId: room.id,
+    });
+    await awardMentionedMasks(mask.id, sanitizedBody, {
+      contextType: 'NARRATIVE_ROOM',
+      contextId: room.id,
+    });
+
+    await hydrateAuraCacheForMaskIds([createdMessage.mask.id]);
+    const serialized = serializeNarrativeMessage(createdMessage, getCachedSocketAura(createdMessage.mask.id));
+    broadcastToNarrativeRoom(room.id, {
+      type: 'NARRATIVE_NEW_MESSAGE',
+      data: {
+        roomId: room.id,
+        message: serialized,
+      },
+    });
+
+    return SendNarrativeMessageResponseSchema.parse({
+      message: serialized,
+    });
+  });
+
   app.get('/ws', { websocket: true, preValidation: [authenticate] }, async (connection, request) => {
     const session: SocketSession = {
       socket: connection.socket,
@@ -4056,7 +6189,8 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       leaveRoom(session);
 
       session.joinedRoomId = room.id;
-      session.joinedMember = serializeRoomMember(membership);
+      await hydrateAuraCacheForMaskIds([membership.mask.id]);
+      session.joinedMember = serializeRoomMember(membership, getCachedSocketAura(membership.mask.id));
       getRoomSockets(room.id).add(connection.socket);
 
       ensureRoomExpiryTimer(room);
@@ -4150,11 +6284,19 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         body: sanitizedBody,
         imageUploadId: uploadValidation.upload?.id,
       });
+      await awardAuraEvent(maskId, 'MESSAGE_SENT', {
+        contextType: 'EPHEMERAL_ROOM',
+        contextId: roomId,
+      });
+      await awardMentionedMasks(maskId, sanitizedBody, {
+        contextType: 'EPHEMERAL_ROOM',
+        contextId: roomId,
+      });
 
       broadcastToRoom(roomId, {
         type: 'NEW_MESSAGE',
         data: {
-          message: serializeRealtimeMessage(created),
+          message: serializeRealtimeMessage(created, getCachedSocketAura(created.mask.id)),
         },
       });
     };
@@ -4192,6 +6334,7 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       leaveDm(session);
       session.joinedDmThreadId = thread.id;
       session.joinedDmMaskId = mask.id;
+      await hydrateAuraCacheForMaskIds([mask.id]);
       getDmSockets(thread.id).add(connection.socket);
 
       await emitDmState(thread.id, connection.socket);
@@ -4273,12 +6416,20 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         body: sanitizedBody,
         imageUploadId: uploadValidation.upload?.id,
       });
+      await awardAuraEvent(maskId, 'MESSAGE_SENT', {
+        contextType: 'DM_THREAD',
+        contextId: threadId,
+      });
+      await awardMentionedMasks(maskId, sanitizedBody, {
+        contextType: 'DM_THREAD',
+        contextId: threadId,
+      });
 
       broadcastToDm(threadId, {
         type: 'NEW_DM_MESSAGE',
         data: {
           threadId,
-          message: serializeDmMessage(created),
+          message: serializeDmMessage(created, getCachedSocketAura(created.mask.id)),
         },
       });
     };
@@ -4305,7 +6456,12 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
       leaveChannel(session);
 
       session.joinedChannelId = channel.id;
-      session.joinedChannelMember = serializeServerChannelMember(membership, effectiveMask);
+      await hydrateAuraCacheForMaskIds([effectiveMask.id]);
+      session.joinedChannelMember = serializeServerChannelMember(
+        membership,
+        effectiveMask,
+        getCachedSocketAura(effectiveMask.id),
+      );
       getChannelSockets(channel.id).add(connection.socket);
 
       await emitChannelState(channel.id, connection.socket);
@@ -4388,7 +6544,12 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         return;
       }
 
-      session.joinedChannelMember = serializeServerChannelMember(membership, effectiveMaskRecord);
+      await hydrateAuraCacheForMaskIds([effectiveMaskRecord.id]);
+      session.joinedChannelMember = serializeServerChannelMember(
+        membership,
+        effectiveMaskRecord,
+        getCachedSocketAura(effectiveMaskRecord.id),
+      );
 
       const created = await repo.createServerMessage({
         channelId,
@@ -4396,11 +6557,173 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
         body: sanitizedBody,
         imageUploadId: uploadValidation.upload?.id,
       });
+      await awardAuraEvent(effectiveMaskRecord.id, 'MESSAGE_SENT', {
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+      });
+      await awardMentionedMasks(effectiveMaskRecord.id, sanitizedBody, {
+        contextType: 'SERVER_CHANNEL',
+        contextId: channelId,
+      });
 
       broadcastToChannel(channelId, {
         type: 'NEW_CHANNEL_MESSAGE',
         data: {
-          message: serializeServerMessage(created),
+          message: serializeServerMessage(created, getCachedSocketAura(created.mask.id)),
+        },
+      });
+    };
+
+    const handleJoinNarrativeRoom = async (roomId: string, maskId: string) => {
+      const narrativeRepo = resolveNarrativeRepo();
+      if (!narrativeRepo) {
+        sendSocketError(connection.socket, 'Narrative Rooms are unavailable on this deployment');
+        return;
+      }
+
+      const mask = await repo.findMaskByIdForUser(maskId, session.userId);
+      if (!mask) {
+        sendSocketError(connection.socket, 'Mask is not owned by the authenticated user');
+        return;
+      }
+
+      const room = await narrativeRepo.findNarrativeRoomById(roomId);
+      if (!room) {
+        sendSocketError(connection.socket, 'Narrative room not found');
+        return;
+      }
+
+      if (room.status === 'ENDED') {
+        sendSocketError(connection.socket, 'Narrative room has ended');
+        return;
+      }
+
+      const membership = await narrativeRepo.findNarrativeMembership(room.id, mask.id);
+      if (!membership) {
+        sendSocketError(connection.socket, 'Mask is not a member of this narrative room');
+        return;
+      }
+
+      const wasPresent = isMaskPresentInNarrativeRoom(room.id, mask.id, connection.socket);
+      leaveNarrativeRoom(session);
+
+      session.joinedNarrativeRoomId = room.id;
+      session.joinedNarrativeMaskId = mask.id;
+      getNarrativeRoomSockets(room.id).add(connection.socket);
+
+      await emitNarrativeRoomState(room.id, connection.socket);
+      await hydrateAuraCacheForMaskIds([mask.id]);
+      if (!wasPresent) {
+        broadcastToNarrativeRoom(
+          room.id,
+          {
+            type: 'NARRATIVE_MEMBER_JOINED',
+            data: {
+              roomId: room.id,
+              member: {
+                membership: serializeNarrativeMembership(membership),
+                mask: serializeSocketMaskIdentity(mask, getCachedSocketAura(mask.id)),
+              },
+            },
+          },
+          connection.socket,
+        );
+      }
+
+      const [assignment, templateRecord] = await Promise.all([
+        narrativeRepo.findNarrativeRoleAssignment(room.id, mask.id),
+        narrativeRepo.findNarrativeTemplateById(room.templateId),
+      ]);
+      if (assignment && templateRecord) {
+        const role = serializeNarrativeTemplate(templateRecord).roles.find(
+          (candidate) => candidate.key === assignment.roleKey,
+        );
+        if (role) {
+          sendSocketEvent(connection.socket, {
+            type: 'NARRATIVE_ROLE_ASSIGNED',
+            data: {
+              roomId: room.id,
+              roleKey: assignment.roleKey,
+              role,
+              secretPayload: assignment.secretPayload ?? null,
+            },
+          });
+        }
+      }
+
+      await emitNarrativeRoomState(room.id);
+    };
+
+    const handleSendNarrativeMessage = async (roomId: string, maskId: string, body: string) => {
+      const narrativeRepo = resolveNarrativeRepo();
+      if (!narrativeRepo) {
+        sendSocketError(connection.socket, 'Narrative Rooms are unavailable on this deployment');
+        return;
+      }
+
+      if (!session.joinedNarrativeRoomId || !session.joinedNarrativeMaskId) {
+        sendSocketError(connection.socket, 'Join a narrative room before sending messages');
+        return;
+      }
+
+      if (session.joinedNarrativeRoomId !== roomId || session.joinedNarrativeMaskId !== maskId) {
+        sendSocketError(connection.socket, 'Message does not match active narrative room or mask');
+        return;
+      }
+
+      const [room, membership] = await Promise.all([
+        narrativeRepo.findNarrativeRoomById(roomId),
+        narrativeRepo.findNarrativeMembership(roomId, maskId),
+      ]);
+      if (!room || room.status === 'ENDED') {
+        sendSocketError(connection.socket, 'Narrative room not available');
+        return;
+      }
+
+      if (!membership || membership.mask.userId !== session.userId) {
+        sendSocketError(connection.socket, 'Mask is not authorized for this narrative room');
+        return;
+      }
+
+      const [templateRecord, state] = await Promise.all([
+        narrativeRepo.findNarrativeTemplateById(room.templateId),
+        narrativeRepo.findNarrativeSessionState(room.id),
+      ]);
+      if (templateRecord && state) {
+        const template = serializeNarrativeTemplate(templateRecord);
+        const activePhase = template.phases[state.phaseIndex];
+        if (activePhase && activePhase.allowTextChat === false) {
+          sendSocketError(connection.socket, 'Chat is disabled during the current phase');
+          return;
+        }
+      }
+
+      const sanitizedBody = sanitizeMessageBody(body);
+      if (!sanitizedBody) {
+        sendSocketError(connection.socket, 'Message body is empty after sanitization');
+        return;
+      }
+
+      const created = await narrativeRepo.createNarrativeMessage({
+        roomId,
+        maskId,
+        body: sanitizedBody,
+      });
+      await awardAuraEvent(maskId, 'MESSAGE_SENT', {
+        contextType: 'NARRATIVE_ROOM',
+        contextId: roomId,
+      });
+      await awardMentionedMasks(maskId, sanitizedBody, {
+        contextType: 'NARRATIVE_ROOM',
+        contextId: roomId,
+      });
+      await hydrateAuraCacheForMaskIds([created.mask.id]);
+
+      broadcastToNarrativeRoom(roomId, {
+        type: 'NARRATIVE_NEW_MESSAGE',
+        data: {
+          roomId,
+          message: serializeNarrativeMessage(created, getCachedSocketAura(created.mask.id)),
         },
       });
     };
@@ -4461,11 +6784,37 @@ export const buildApp = async ({ env, repo, redis, logger }: BuildAppOptions): P
           parsedEvent.data.data.body,
           parsedEvent.data.data.imageUploadId,
         );
+        return;
+      }
+
+      if (parsedEvent.data.type === 'JOIN_NARRATIVE_ROOM') {
+        void handleJoinNarrativeRoom(parsedEvent.data.data.roomId, parsedEvent.data.data.maskId);
+        return;
+      }
+
+      if (parsedEvent.data.type === 'LEAVE_NARRATIVE_ROOM') {
+        if (!session.joinedNarrativeRoomId || session.joinedNarrativeRoomId !== parsedEvent.data.data.roomId) {
+          sendSocketError(connection.socket, 'Not joined to the specified narrative room');
+          return;
+        }
+
+        leaveNarrativeRoom(session);
+        void emitNarrativeRoomState(parsedEvent.data.data.roomId);
+        return;
+      }
+
+      if (parsedEvent.data.type === 'SEND_NARRATIVE_MESSAGE') {
+        void handleSendNarrativeMessage(
+          parsedEvent.data.data.roomId,
+          parsedEvent.data.data.maskId,
+          parsedEvent.data.data.body,
+        );
       }
     });
 
     connection.socket.on('close', () => {
       leaveRoom(session);
+      leaveNarrativeRoom(session);
       leaveDm(session);
       leaveChannel(session);
       sessions.delete(connection.socket);

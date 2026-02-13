@@ -1,11 +1,15 @@
 import {
   AuthResponseSchema,
+  CreateNarrativeRoomRequestSchema,
+  CreateNarrativeRoomResponseSchema,
   CreateServerRequestSchema,
   CreateServerResponseSchema,
   CreateFriendRequestRequestSchema,
   CreateFriendRequestResponseSchema,
   CreateMaskRequestSchema,
   CreateMaskResponseSchema,
+  DevGrantEntitlementRequestSchema,
+  DevGrantEntitlementResponseSchema,
   SetMaskAvatarResponseSchema,
   CreateServerChannelRequestSchema,
   CreateServerChannelResponseSchema,
@@ -20,6 +24,8 @@ import {
   DeleteMaskResponseSchema,
   DmStartResponseSchema,
   GetServerResponseSchema,
+  GetMaskAuraResponseSchema,
+  GetNarrativeRoomResponseSchema,
   DmThreadResponseSchema,
   DmThreadsResponseSchema,
   ExileRoomMemberRequestSchema,
@@ -28,8 +34,15 @@ import {
   FriendsListResponseSchema,
   JoinServerRequestSchema,
   JoinServerResponseSchema,
+  JoinNarrativeRoomRequestSchema,
+  JoinNarrativeRoomResponseSchema,
   JoinRoomRequestSchema,
   JoinRoomResponseSchema,
+  LeaveNarrativeRoomRequestSchema,
+  LeaveNarrativeRoomResponseSchema,
+  SetNarrativeReadyRequestSchema,
+  SetNarrativeReadyResponseSchema,
+  ListNarrativeTemplatesResponseSchema,
   ListRoomsResponseSchema,
   ListServerRolesResponseSchema,
   ListServersResponseSchema,
@@ -39,7 +52,12 @@ import {
   MeResponseSchema,
   ModerateRoomResponseSchema,
   MuteRoomMemberRequestSchema,
+  NarrativeActionResponseSchema,
   RegisterRequestSchema,
+  UpdateRtcSettingsRequestSchema,
+  UpdateRtcSettingsResponseSchema,
+  UpdateServerRtcPolicyRequestSchema,
+  UpdateServerRtcPolicyResponseSchema,
   SetServerMaskRequestSchema,
   SetServerMaskResponseSchema,
   SetChannelMaskRequestSchema,
@@ -57,17 +75,23 @@ import {
   MuteRtcParticipantResponseSchema,
   EndRtcSessionRequestSchema,
   EndRtcSessionResponseSchema,
+  SendNarrativeMessageRequestSchema,
+  SendNarrativeMessageResponseSchema,
   ServerRoleResponseSchema,
   StartDmRequestSchema,
   UpdateServerRoleRequestSchema,
   KickServerMemberResponseSchema,
   type AuthResponse,
+  type CreateNarrativeRoomRequest,
+  type CreateNarrativeRoomResponse,
   type CreateServerRequest,
   type CreateServerResponse,
   type CreateFriendRequestRequest,
   type CreateFriendRequestResponse,
   type CreateMaskRequest,
   type CreateMaskResponse,
+  type DevGrantEntitlementRequest,
+  type DevGrantEntitlementResponse,
   type SetMaskAvatarResponse,
   type CreateServerChannelRequest,
   type CreateServerChannelResponse,
@@ -82,6 +106,8 @@ import {
   type DeleteMaskResponse,
   type DmStartResponse,
   type GetServerResponse,
+  type GetMaskAuraResponse,
+  type GetNarrativeRoomResponse,
   type DmThreadResponse,
   type DmThreadsResponse,
   type ExileRoomMemberRequest,
@@ -90,8 +116,15 @@ import {
   type FriendsListResponse,
   type JoinServerRequest,
   type JoinServerResponse,
+  type JoinNarrativeRoomRequest,
+  type JoinNarrativeRoomResponse,
   type JoinRoomRequest,
   type JoinRoomResponse,
+  type LeaveNarrativeRoomRequest,
+  type LeaveNarrativeRoomResponse,
+  type SetNarrativeReadyRequest,
+  type SetNarrativeReadyResponse,
+  type ListNarrativeTemplatesResponse,
   type ListRoomsResponse,
   type ListServerRolesResponse,
   type ListServersResponse,
@@ -101,7 +134,12 @@ import {
   type MeResponse,
   type ModerateRoomResponse,
   type MuteRoomMemberRequest,
+  type NarrativeActionResponse,
   type RegisterRequest,
+  type UpdateRtcSettingsRequest,
+  type UpdateRtcSettingsResponse,
+  type UpdateServerRtcPolicyRequest,
+  type UpdateServerRtcPolicyResponse,
   type SetServerMaskRequest,
   type SetServerMaskResponse,
   type SetChannelMaskRequest,
@@ -119,6 +157,8 @@ import {
   type MuteRtcParticipantResponse,
   type EndRtcSessionRequest,
   type EndRtcSessionResponse,
+  type SendNarrativeMessageRequest,
+  type SendNarrativeMessageResponse,
   type ServerRoleResponse,
   type StartDmRequest,
   type UpdateServerRoleRequest,
@@ -146,7 +186,7 @@ const request = async <TInput, TOutput>(
     method: 'GET' | 'POST' | 'DELETE' | 'PATCH';
     body?: TInput;
   },
-  schema: z.ZodSchema<TOutput>,
+  schema: z.ZodType<TOutput, z.ZodTypeDef, unknown>,
 ): Promise<TOutput> => {
   const response = await fetch(`${apiBase}${path}`, {
     method: options.method,
@@ -180,7 +220,7 @@ const request = async <TInput, TOutput>(
 const requestFormData = async <TOutput>(
   path: string,
   formData: FormData,
-  schema: z.ZodSchema<TOutput>,
+  schema: z.ZodType<TOutput, z.ZodTypeDef, unknown>,
 ): Promise<TOutput> => {
   const response = await fetch(`${apiBase}${path}`, {
     method: 'POST',
@@ -494,5 +534,121 @@ export const endRtcSession = async (
 ): Promise<EndRtcSessionResponse> => {
   const payload = EndRtcSessionRequestSchema.parse(input);
   return request(`/rtc/session/${sessionId}/end`, { method: 'POST', body: payload }, EndRtcSessionResponseSchema);
+};
+
+export const getMaskAura = async (maskId: string): Promise<GetMaskAuraResponse> => {
+  return request(`/masks/${maskId}/aura`, { method: 'GET' }, GetMaskAuraResponseSchema);
+};
+
+export const listNarrativeTemplates = async (): Promise<ListNarrativeTemplatesResponse> => {
+  return request('/narrative/templates', { method: 'GET' }, ListNarrativeTemplatesResponseSchema);
+};
+
+export const createNarrativeRoom = async (
+  input: CreateNarrativeRoomRequest,
+): Promise<CreateNarrativeRoomResponse> => {
+  const payload = CreateNarrativeRoomRequestSchema.parse(input);
+  return request('/narrative/rooms', { method: 'POST', body: payload }, CreateNarrativeRoomResponseSchema);
+};
+
+export const joinNarrativeRoom = async (
+  input: JoinNarrativeRoomRequest,
+): Promise<JoinNarrativeRoomResponse> => {
+  const payload = JoinNarrativeRoomRequestSchema.parse(input);
+  return request('/narrative/rooms/join', { method: 'POST', body: payload }, JoinNarrativeRoomResponseSchema);
+};
+
+export const leaveNarrativeRoom = async (
+  roomId: string,
+  input: LeaveNarrativeRoomRequest,
+): Promise<LeaveNarrativeRoomResponse> => {
+  const payload = LeaveNarrativeRoomRequestSchema.parse(input);
+  return request(`/narrative/rooms/${roomId}/leave`, { method: 'POST', body: payload }, LeaveNarrativeRoomResponseSchema);
+};
+
+export const setNarrativeReady = async (
+  roomId: string,
+  input: SetNarrativeReadyRequest,
+): Promise<SetNarrativeReadyResponse> => {
+  const payload = SetNarrativeReadyRequestSchema.parse(input);
+  return request(
+    `/narrative/rooms/${roomId}/ready`,
+    { method: 'POST', body: payload },
+    SetNarrativeReadyResponseSchema,
+  );
+};
+
+export const startNarrativeRoom = async (
+  roomId: string,
+  actorMaskId: string,
+): Promise<NarrativeActionResponse> => {
+  return request(
+    `/narrative/rooms/${roomId}/start`,
+    {
+      method: 'POST',
+      body: {
+        actorMaskId,
+      },
+    },
+    NarrativeActionResponseSchema,
+  );
+};
+
+export const advanceNarrativeRoom = async (
+  roomId: string,
+  actorMaskId: string,
+): Promise<NarrativeActionResponse> => {
+  return request(
+    `/narrative/rooms/${roomId}/advance`,
+    {
+      method: 'POST',
+      body: {
+        actorMaskId,
+      },
+    },
+    NarrativeActionResponseSchema,
+  );
+};
+
+export const getNarrativeRoom = async (roomId: string): Promise<GetNarrativeRoomResponse> => {
+  return request(`/narrative/rooms/${roomId}`, { method: 'GET' }, GetNarrativeRoomResponseSchema);
+};
+
+export const sendNarrativeMessage = async (
+  roomId: string,
+  input: SendNarrativeMessageRequest,
+): Promise<SendNarrativeMessageResponse> => {
+  const payload = SendNarrativeMessageRequestSchema.parse(input);
+  return request(
+    `/narrative/rooms/${roomId}/message`,
+    { method: 'POST', body: payload },
+    SendNarrativeMessageResponseSchema,
+  );
+};
+
+export const grantDevEntitlement = async (
+  input: DevGrantEntitlementRequest,
+): Promise<DevGrantEntitlementResponse> => {
+  const payload = DevGrantEntitlementRequestSchema.parse(input);
+  return request('/dev/entitlements/grant', { method: 'POST', body: payload }, DevGrantEntitlementResponseSchema);
+};
+
+export const updateRtcSettings = async (
+  input: UpdateRtcSettingsRequest,
+): Promise<UpdateRtcSettingsResponse> => {
+  const payload = UpdateRtcSettingsRequestSchema.parse(input);
+  return request('/settings/rtc', { method: 'PATCH', body: payload }, UpdateRtcSettingsResponseSchema);
+};
+
+export const updateServerRtcPolicy = async (
+  serverId: string,
+  input: UpdateServerRtcPolicyRequest,
+): Promise<UpdateServerRtcPolicyResponse> => {
+  const payload = UpdateServerRtcPolicyRequestSchema.parse(input);
+  return request(
+    `/servers/${serverId}/rtc-policy`,
+    { method: 'PATCH', body: payload },
+    UpdateServerRtcPolicyResponseSchema,
+  );
 };
 

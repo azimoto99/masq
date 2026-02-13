@@ -1,10 +1,17 @@
 import type {
+  AuraEventKind,
+  AuraTier,
   ChannelIdentityMode,
   ChannelType,
+  EntitlementKind,
+  EntitlementSource,
+  PushToTalkMode,
   FriendRequestStatus,
   MembershipRole,
+  NarrativeRoomStatus,
   RtcContextType,
   RoomKind,
+  ScreenshareQuality,
   UploadContextType,
   UploadKind,
   ServerPermission,
@@ -27,6 +34,26 @@ export interface MaskRecord {
   color: string;
   avatarSeed: string;
   avatarUploadId: string | null;
+  createdAt: Date;
+}
+
+export interface MaskAuraRecord {
+  id: string;
+  maskId: string;
+  score: number;
+  tier: AuraTier;
+  color: string;
+  lastActivityAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AuraEventRecord {
+  id: string;
+  maskId: string;
+  kind: AuraEventKind;
+  weight: number;
+  meta: unknown | null;
   createdAt: Date;
 }
 
@@ -114,6 +141,8 @@ export interface ServerRecord {
   name: string;
   ownerUserId: string;
   channelIdentityMode: ChannelIdentityMode;
+  stageModeEnabled: boolean;
+  screenshareMinimumRole: ServerMemberRole;
   createdAt: Date;
 }
 
@@ -202,6 +231,66 @@ export interface DmMessageRecord {
   mask: MaskRecord;
 }
 
+export interface NarrativeTemplateRecord {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  minPlayers: number;
+  maxPlayers: number;
+  phases: unknown;
+  roles: unknown;
+  requiresEntitlement: EntitlementKind | null;
+  createdAt: Date;
+}
+
+export interface NarrativeRoomRecord {
+  id: string;
+  templateId: string;
+  code: string;
+  hostMaskId: string;
+  seed: number;
+  status: NarrativeRoomStatus;
+  createdAt: Date;
+  endedAt: Date | null;
+}
+
+export interface NarrativeMembershipRecord {
+  id: string;
+  roomId: string;
+  maskId: string;
+  isReady: boolean;
+  joinedAt: Date;
+  leftAt: Date | null;
+  mask: MaskRecord;
+}
+
+export interface NarrativeSessionStateRecord {
+  roomId: string;
+  phaseIndex: number;
+  phaseEndsAt: Date | null;
+  startedAt: Date;
+  updatedAt: Date;
+}
+
+export interface NarrativeRoleAssignmentRecord {
+  id: string;
+  roomId: string;
+  maskId: string;
+  roleKey: string;
+  secretPayload: unknown | null;
+  createdAt: Date;
+}
+
+export interface NarrativeMessageRecord {
+  id: string;
+  roomId: string;
+  maskId: string;
+  body: string;
+  createdAt: Date;
+  mask: MaskRecord;
+}
+
 export interface UploadRecord {
   id: string;
   ownerUserId: string;
@@ -213,6 +302,37 @@ export interface UploadRecord {
   sizeBytes: number;
   storagePath: string;
   createdAt: Date;
+}
+
+export interface EntitlementRecord {
+  id: string;
+  userId: string;
+  kind: EntitlementKind;
+  source: EntitlementSource;
+  expiresAt: Date | null;
+  createdAt: Date;
+}
+
+export interface CosmeticUnlockRecord {
+  id: string;
+  userId: string;
+  key: string;
+  unlockedAt: Date;
+}
+
+export interface UserRtcSettingsRecord {
+  userId: string;
+  advancedNoiseSuppression: boolean;
+  pushToTalkMode: PushToTalkMode;
+  pushToTalkHotkey: string;
+  multiPinEnabled: boolean;
+  pictureInPictureEnabled: boolean;
+  defaultScreenshareFps: 30 | 60;
+  defaultScreenshareQuality: ScreenshareQuality;
+  cursorHighlight: boolean;
+  selectedAuraStyle: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface VoiceSessionRecord {
@@ -360,6 +480,76 @@ export interface CreateVoiceParticipantInput {
   isServerMuted?: boolean;
 }
 
+export interface CreateAuraEventInput {
+  maskId: string;
+  kind: AuraEventKind;
+  weight: number;
+  meta?: unknown;
+}
+
+export interface CreateNarrativeRoomInput {
+  templateId: string;
+  code: string;
+  hostMaskId: string;
+  seed: number;
+}
+
+export interface UpsertNarrativeTemplateInput {
+  slug: string;
+  name: string;
+  description: string;
+  minPlayers: number;
+  maxPlayers: number;
+  phases: unknown;
+  roles: unknown;
+  requiresEntitlement: EntitlementKind | null;
+}
+
+export interface AddNarrativeMembershipInput {
+  roomId: string;
+  maskId: string;
+  isReady?: boolean;
+}
+
+export interface CreateNarrativeSessionStateInput {
+  roomId: string;
+  phaseIndex: number;
+  phaseEndsAt: Date | null;
+  startedAt?: Date;
+}
+
+export interface UpsertNarrativeRoleAssignmentInput {
+  roomId: string;
+  maskId: string;
+  roleKey: string;
+  secretPayload?: unknown;
+}
+
+export interface CreateNarrativeMessageInput {
+  roomId: string;
+  maskId: string;
+  body: string;
+}
+
+export interface CreateEntitlementInput {
+  userId: string;
+  kind: EntitlementKind;
+  source: EntitlementSource;
+  expiresAt: Date | null;
+}
+
+export interface UpdateUserRtcSettingsInput {
+  advancedNoiseSuppression?: boolean;
+  pushToTalkMode?: PushToTalkMode;
+  pushToTalkHotkey?: string;
+  multiPinEnabled?: boolean;
+  pictureInPictureEnabled?: boolean;
+  defaultScreenshareFps?: 30 | 60;
+  defaultScreenshareQuality?: ScreenshareQuality;
+  cursorHighlight?: boolean;
+  selectedAuraStyle?: string;
+}
+
 export interface MasqRepository {
   pingDb(): Promise<void>;
   findUserByEmail(email: string): Promise<UserRecord | null>;
@@ -371,9 +561,14 @@ export interface MasqRepository {
   countMasksByUser(userId: string): Promise<number>;
   createMask(input: CreateMaskInput): Promise<MaskRecord>;
   setMaskAvatarUpload(maskId: string, avatarUploadId: string | null): Promise<MaskRecord>;
+  findMaskById?(maskId: string): Promise<MaskRecord | null>;
   findMaskByIdForUser(maskId: string, userId: string): Promise<MaskRecord | null>;
   createServer(input: CreateServerInput): Promise<ServerRecord>;
   updateServerSettings(serverId: string, settings: { channelIdentityMode: ChannelIdentityMode }): Promise<ServerRecord>;
+  updateServerRtcPolicy?(
+    serverId: string,
+    settings: { stageModeEnabled?: boolean; screenshareMinimumRole?: ServerMemberRole },
+  ): Promise<ServerRecord>;
   listServersForUser(userId: string): Promise<ServerListItemRecord[]>;
   findServerById(serverId: string): Promise<ServerRecord | null>;
   findServerMember(serverId: string, userId: string): Promise<ServerMemberRecord | null>;
@@ -449,6 +644,51 @@ export interface MasqRepository {
     targetMaskId: string,
     isServerMuted: boolean,
   ): Promise<number>;
+  findMaskAuraByMaskId?(maskId: string): Promise<MaskAuraRecord | null>;
+  upsertMaskAura?(maskId: string): Promise<MaskAuraRecord>;
+  updateMaskAura?(
+    maskId: string,
+    updates: {
+      score?: number;
+      tier?: AuraTier;
+      color?: string;
+      lastActivityAt?: Date;
+    },
+  ): Promise<MaskAuraRecord>;
+  listAuraEventsByMask?(maskId: string, options?: { limit?: number; kind?: AuraEventKind; since?: Date }): Promise<AuraEventRecord[]>;
+  countAuraEventsByMaskKindSince?(maskId: string, kind: AuraEventKind, since: Date): Promise<number>;
+  createAuraEvent?(input: CreateAuraEventInput): Promise<AuraEventRecord>;
+  listNarrativeTemplates?(): Promise<NarrativeTemplateRecord[]>;
+  upsertNarrativeTemplateBySlug?(input: UpsertNarrativeTemplateInput): Promise<NarrativeTemplateRecord>;
+  findNarrativeTemplateById?(templateId: string): Promise<NarrativeTemplateRecord | null>;
+  createNarrativeRoom?(input: CreateNarrativeRoomInput): Promise<NarrativeRoomRecord>;
+  findNarrativeRoomById?(roomId: string): Promise<NarrativeRoomRecord | null>;
+  findNarrativeRoomByCode?(code: string): Promise<NarrativeRoomRecord | null>;
+  listNarrativeRoomsByStatus?(status: NarrativeRoomStatus): Promise<NarrativeRoomRecord[]>;
+  updateNarrativeRoom?(
+    roomId: string,
+    updates: {
+      status?: NarrativeRoomStatus;
+      endedAt?: Date | null;
+    },
+  ): Promise<NarrativeRoomRecord>;
+  addNarrativeMembership?(input: AddNarrativeMembershipInput): Promise<NarrativeMembershipRecord>;
+  updateNarrativeMembershipReady?(roomId: string, maskId: string, isReady: boolean): Promise<NarrativeMembershipRecord>;
+  removeNarrativeMembership?(roomId: string, maskId: string, leftAt: Date): Promise<void>;
+  findNarrativeMembership?(roomId: string, maskId: string): Promise<NarrativeMembershipRecord | null>;
+  listNarrativeMemberships?(roomId: string, includeInactive?: boolean): Promise<NarrativeMembershipRecord[]>;
+  upsertNarrativeSessionState?(input: CreateNarrativeSessionStateInput): Promise<NarrativeSessionStateRecord>;
+  findNarrativeSessionState?(roomId: string): Promise<NarrativeSessionStateRecord | null>;
+  createNarrativeRoleAssignment?(input: UpsertNarrativeRoleAssignmentInput): Promise<NarrativeRoleAssignmentRecord>;
+  listNarrativeRoleAssignments?(roomId: string): Promise<NarrativeRoleAssignmentRecord[]>;
+  findNarrativeRoleAssignment?(roomId: string, maskId: string): Promise<NarrativeRoleAssignmentRecord | null>;
+  createNarrativeMessage?(input: CreateNarrativeMessageInput): Promise<NarrativeMessageRecord>;
+  listNarrativeMessages?(roomId: string, limit?: number): Promise<NarrativeMessageRecord[]>;
+  listEntitlementsByUser?(userId: string): Promise<EntitlementRecord[]>;
+  createEntitlement?(input: CreateEntitlementInput): Promise<EntitlementRecord>;
+  listCosmeticUnlocksByUser?(userId: string): Promise<CosmeticUnlockRecord[]>;
+  findUserRtcSettings?(userId: string): Promise<UserRtcSettingsRecord | null>;
+  upsertUserRtcSettings?(userId: string, updates: UpdateUserRtcSettingsInput): Promise<UserRtcSettingsRecord>;
 }
 
 export interface RedisClient {
